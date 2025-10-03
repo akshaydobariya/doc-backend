@@ -4,19 +4,40 @@ const DoctorAvailability = require('../models/DoctorAvailability');
 const calendarController = require('./calendarController');
 
 exports.googleAuthUrl = (req, res) => {
-  const { role } = req.query;
-  if (!role || !['doctor', 'client'].includes(role)) {
-    return res.status(400).json({ message: 'Invalid role specified' });
+  try {
+    const { role } = req.query;
+
+    console.log('Google Auth URL requested for role:', role);
+
+    if (!role || !['doctor', 'client'].includes(role)) {
+      console.error('Invalid role:', role);
+      return res.status(400).json({ message: 'Invalid role specified' });
+    }
+
+    // Check if Google client is configured
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error('Google OAuth credentials not configured');
+      return res.status(500).json({
+        message: 'OAuth is not configured on the server. Please contact support.'
+      });
+    }
+
+    const url = client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent', // Force consent screen to get refresh token
+      scope: scopes,
+      state: role // Pass the role through state parameter
+    });
+
+    console.log('Generated OAuth URL successfully');
+    res.json({ url });
+  } catch (error) {
+    console.error('Error generating Google Auth URL:', error);
+    res.status(500).json({
+      message: 'Failed to generate authentication URL',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
-
-  const url = client.generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent', // Force consent screen to get refresh token
-    scope: scopes,
-    state: role // Pass the role through state parameter
-  });
-
-  res.json({ url });
 };
 
 exports.googleCallback = async (req, res) => {

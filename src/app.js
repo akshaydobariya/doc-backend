@@ -16,14 +16,18 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(express.json());
 
-// CORS configuration with better error handling
+// CORS configuration for production
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       process.env.FRONTEND_URL,
+      'https://doc-fronted-psi.vercel.app',
       'http://localhost:3000',
       'http://localhost:3001'
     ].filter(Boolean);
+
+    console.log('Request from origin:', origin);
+    console.log('Allowed origins:', allowedOrigins);
 
     // Allow requests with no origin (like mobile apps, Postman, curl)
     if (!origin) return callback(null, true);
@@ -31,19 +35,22 @@ const corsOptions = {
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log('Blocked origin:', origin);
-      callback(null, true); // Allow anyway for debugging
+      console.warn('Origin not in whitelist:', origin);
+      // In production, allow for now to diagnose issues
+      callback(null, true);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['set-cookie']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['set-cookie', 'Set-Cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
 
-// Handle preflight requests
+// Handle preflight requests explicitly
 app.options('*', cors(corsOptions));
 
 // Session configuration
