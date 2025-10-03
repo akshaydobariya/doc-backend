@@ -93,6 +93,8 @@ exports.googleCallback = async (req, res) => {
     req.session.userId = user._id;
     req.session.role = user.role;
 
+    console.log('Session set:', { userId: user._id, role: user.role, sessionID: req.sessionID });
+
     // For doctors: Auto-setup webhook and sync calendar on first login
     if (user.role === 'doctor') {
       try {
@@ -146,15 +148,24 @@ exports.googleCallback = async (req, res) => {
       }
     }
 
-    res.json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        picture: user.picture,
-        calendarConnected: user.calendarConnected
+    // Explicitly save session before responding
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.status(500).json({ message: 'Failed to save session' });
       }
+
+      console.log('Session saved successfully');
+      res.json({
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          picture: user.picture,
+          calendarConnected: user.calendarConnected
+        }
+      });
     });
   } catch (error) {
     console.error('Google auth error:', error);
@@ -174,16 +185,23 @@ exports.googleCallback = async (req, res) => {
 };
 
 exports.getCurrentUser = async (req, res) => {
+  console.log('getCurrentUser called - Session ID:', req.sessionID);
+  console.log('getCurrentUser - Session data:', req.session);
+  console.log('getCurrentUser - User ID from session:', req.session.userId);
+
   if (!req.session.userId) {
+    console.log('No userId in session - returning 401');
     return res.status(401).json({ message: 'Not authenticated' });
   }
 
   try {
     const user = await User.findById(req.session.userId);
     if (!user) {
+      console.log('User not found in database:', req.session.userId);
       return res.status(404).json({ message: 'User not found' });
     }
 
+    console.log('User found:', user.email);
     res.json({
       user: {
         id: user._id,

@@ -50,7 +50,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Session configuration
+// Session configuration - CRITICAL for production cross-domain cookies
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback-secret-change-in-production',
   resave: false,
@@ -64,17 +64,25 @@ app.use(session({
     }
   }),
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+    secure: true, // Always use HTTPS (required for sameSite: none)
     httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    sameSite: 'none', // Required for cross-domain cookies
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost',
     path: '/'
+    // Do NOT set domain - let browser handle it automatically
   },
   name: 'sessionId', // Custom session cookie name
   proxy: true, // Trust the reverse proxy
   rolling: true // Reset maxAge on every request
 }));
+
+// Session debugging middleware
+app.use((req, res, next) => {
+  console.log('Session ID:', req.sessionID);
+  console.log('Session data:', req.session);
+  console.log('Cookies:', req.headers.cookie);
+  next();
+});
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
