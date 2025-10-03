@@ -50,9 +50,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
-
 // Session configuration
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback-secret-change-in-production',
