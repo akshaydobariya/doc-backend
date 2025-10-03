@@ -155,7 +155,12 @@ exports.googleCallback = async (req, res) => {
         return res.status(500).json({ message: 'Failed to save session' });
       }
 
-      console.log('Session saved successfully');
+      console.log('Session saved successfully, sessionID:', req.sessionID);
+      console.log('Cookie being sent:', req.session.cookie);
+
+      // Ensure CORS headers are set for cookie
+      res.header('Access-Control-Allow-Credentials', 'true');
+
       res.json({
         user: {
           id: user._id,
@@ -164,7 +169,8 @@ exports.googleCallback = async (req, res) => {
           role: user.role,
           picture: user.picture,
           calendarConnected: user.calendarConnected
-        }
+        },
+        sessionId: req.sessionID // Send session ID for debugging
       });
     });
   } catch (error) {
