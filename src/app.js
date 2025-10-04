@@ -22,6 +22,7 @@ const corsOptions = {
     const allowedOrigins = [
       process.env.FRONTEND_URL,
       'https://doc-fronted-psi.vercel.app',
+      'https://patient-flow-delta.vercel.app', // Patient booking widget
       'http://localhost:3000',
       'http://localhost:3001'
     ].filter(Boolean);
