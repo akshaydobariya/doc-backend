@@ -14,18 +14,21 @@ const appointmentSchema = new mongoose.Schema({
   client: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false // Allow null for public bookings
   },
 
-  // Patient details (for non-registered users in future)
+  // Patient details (required for public bookings, optional for authenticated users)
   patientName: {
-    type: String
+    type: String,
+    required: true
   },
   patientEmail: {
-    type: String
+    type: String,
+    required: true
   },
   patientPhone: {
-    type: String
+    type: String,
+    required: true
   },
   reasonForVisit: {
     type: String
@@ -90,7 +93,7 @@ appointmentSchema.pre('save', function(next) {
 
 // Index for efficient querying of appointments
 appointmentSchema.index({ doctor: 1, status: 1, createdAt: -1 });
-appointmentSchema.index({ client: 1, status: 1, createdAt: -1 });
+appointmentSchema.index({ client: 1, status: 1, createdAt: -1 }, { sparse: true }); // Sparse index to allow null clients
 appointmentSchema.index({ 'slot': 1 });
 
 module.exports = mongoose.model('Appointment', appointmentSchema);

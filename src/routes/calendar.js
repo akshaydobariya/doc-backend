@@ -24,13 +24,24 @@ router.post('/slots',
   calendarController.createSlot
 );
 
-// Get available slots for booking
-router.get('/slots',
+// Check if doctor has today's slots
+router.get('/check-today-slots',
   isAuthenticated,
+  hasRole(['doctor']),
+  calendarController.checkTodaySlots
+);
+
+// Get available slots for booking (PUBLIC - for patient booking widget)
+router.get('/slots',
   calendarController.getAvailableSlots
 );
 
-// Book a slot
+// Book a slot (PUBLIC - for patient booking widget)
+router.post('/book-slot',
+  calendarController.bookSlotPublic
+);
+
+// Book a slot (authenticated users only)
 router.post('/slots/book',
   isAuthenticated,
   hasRole(['client']),

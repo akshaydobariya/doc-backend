@@ -58,10 +58,14 @@ router.delete('/blocked-slots/:slotId',
   availabilityController.removeBlockedSlot
 );
 
-// Get all doctors with availability
+// Get all doctors with availability (PUBLIC - for patient booking widget)
 router.get('/doctors',
-  isAuthenticated,
   availabilityController.getAllDoctorsWithAvailability
+);
+
+// Get doctor availability by ID (PUBLIC - for patient booking widget)
+router.get('/:doctorId',
+  availabilityController.getAvailabilityByDoctorId
 );
 
 module.exports = router;

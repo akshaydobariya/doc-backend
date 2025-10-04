@@ -34,6 +34,51 @@ const getUserId = (req) => {
   return req.user?._id || req.session?.userId;
 };
 
+// Check if doctor has created slots for today
+exports.checkTodaySlots = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'doctor') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Get today's date range (start of day to end of day)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Check if there are any slots for today
+    const todaySlots = await Slot.find({
+      doctor: userId,
+      startTime: {
+        $gte: todayStart,
+        $lte: todayEnd
+      }
+    });
+
+    const hasTodaySlots = todaySlots.length > 0;
+
+    return res.json({
+      hasTodaySlots,
+      slotsCount: todaySlots.length,
+      todayDate: todayStart.toISOString().split('T')[0]
+    });
+  } catch (error) {
+    console.error('Check today slots error:', error);
+    res.status(500).json({
+      message: 'Failed to check today slots',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 // Sync calendar with webhook setup
 exports.syncCalendar = async (req, res) => {
   try {
@@ -140,13 +185,14 @@ exports.syncCalendar = async (req, res) => {
 exports.generateSlots = async (req, res) => {
   try {
     const doctorId = getUserId(req);
-    const { startDate, endDate, appointmentTypeId } = req.body;
+    const { startDate, endDate, appointmentTypeId, includeWeekends = false } = req.body;
 
     console.log('=== GENERATE SLOTS REQUEST ===');
     console.log('Doctor ID:', doctorId);
     console.log('Start Date:', startDate);
     console.log('End Date:', endDate);
     console.log('Appointment Type ID:', appointmentTypeId);
+    console.log('Include Weekends:', includeWeekends);
 
     // Get doctor availability settings
     const availability = await DoctorAvailability.findOne({ doctor: doctorId });
@@ -195,10 +241,33 @@ exports.generateSlots = async (req, res) => {
       const dayOfWeek = date.getDay();
       console.log(`\nChecking date: ${date.toISOString()} (Day: ${dayOfWeek})`);
 
+      // Check if weekend and should skip
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      if (isWeekend && !includeWeekends) {
+        console.log(`  ⏭️  Skipping weekend day ${dayOfWeek} (includeWeekends=false)`);
+        continue;
+      }
+
       // Find availability for this day
-      const dayAvailability = availability.standardAvailability.find(
+      let dayAvailability = availability.standardAvailability.find(
         a => a.dayOfWeek === dayOfWeek && a.enabled
       );
+
+      // If weekend and includeWeekends is true, but no weekend availability configured,
+      // use weekday availability as fallback (or skip if you prefer)
+      if (!dayAvailability && isWeekend && includeWeekends) {
+        console.log(`  ⚠️  No weekend availability configured for day ${dayOfWeek}, using default weekday hours`);
+        // Use first enabled weekday availability as template
+        const weekdayAvailability = availability.standardAvailability.find(a => a.enabled);
+        if (weekdayAvailability) {
+          dayAvailability = {
+            dayOfWeek,
+            startTime: weekdayAvailability.startTime,
+            endTime: weekdayAvailability.endTime,
+            enabled: true
+          };
+        }
+      }
 
       if (!dayAvailability) {
         console.log(`  ❌ No availability configured for day ${dayOfWeek}`);
@@ -218,7 +287,36 @@ exports.generateSlots = async (req, res) => {
       const dayEnd = new Date(date);
       dayEnd.setUTCHours(parseInt(endHour), parseInt(endMinute), 0, 0);
 
-      console.log(`  📅 Generated time range: ${dayStart.toISOString()} - ${dayEnd.toISOString()}`);
+      // If this is today, adjust start time to current time + buffer
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+
+      if (isToday && dayStart < now) {
+        console.log(`  ⏰ Today detected - current time: ${now.toISOString()}`);
+        // Round up to next slot interval (e.g., if it's 2:17 PM and slots are 30 min, start at 2:30 PM)
+        const minLeadTime = availability?.rules?.minLeadTime || 0;
+        const minStartTime = new Date(now.getTime() + minLeadTime * 60 * 60 * 1000);
+
+        // Round up to next appointment interval
+        const minutes = minStartTime.getMinutes();
+        const roundedMinutes = Math.ceil(minutes / appointmentType.duration) * appointmentType.duration;
+        minStartTime.setMinutes(roundedMinutes);
+        minStartTime.setSeconds(0);
+        minStartTime.setMilliseconds(0);
+
+        if (minStartTime > dayStart) {
+          dayStart.setTime(minStartTime.getTime());
+          console.log(`  ⏰ Adjusted start time to: ${dayStart.toISOString()} (current time + lead time + rounding)`);
+        }
+
+        // If adjusted start time is after end time, skip this day
+        if (dayStart >= dayEnd) {
+          console.log(`  ⏭️  Skipping today - no available time slots remaining`);
+          continue;
+        }
+      }
+
+      console.log(`  📅 Final time range: ${dayStart.toISOString()} - ${dayEnd.toISOString()}`);
 
       // Check if appointment type has time restrictions
       let effectiveStart = new Date(dayStart);
@@ -581,6 +679,138 @@ exports.bookSlot = async (req, res) => {
   } catch (error) {
     console.error('Book slot error:', error);
     res.status(500).json({ message: 'Failed to book slot' });
+  }
+};
+
+// Book slot (PUBLIC - for patient booking widget without authentication)
+exports.bookSlotPublic = async (req, res) => {
+  try {
+    const { slotId, patientName, patientEmail, patientPhone, reasonForVisit, notes } = req.body;
+
+    // Validate required fields
+    if (!slotId || !patientName || !patientEmail || !patientPhone) {
+      return res.status(400).json({ message: 'Missing required fields: slotId, patientName, patientEmail, patientPhone' });
+    }
+
+    const slot = await Slot.findById(slotId).populate('doctor');
+    if (!slot || !slot.isAvailable) {
+      return res.status(400).json({ message: 'Slot not available' });
+    }
+
+    // Check if appointment time is still valid (min lead time)
+    const availability = await DoctorAvailability.findOne({ doctor: slot.doctor._id });
+    const minLeadTime = availability?.rules.minLeadTime || 1;
+    const minBookingTime = new Date(Date.now() + minLeadTime * 60 * 60 * 1000);
+
+    if (slot.startTime < minBookingTime) {
+      return res.status(400).json({ message: `Appointments must be booked at least ${minLeadTime} hours in advance` });
+    }
+
+    // Create appointment without client reference (public booking)
+    const appointment = new Appointment({
+      slot: slotId,
+      doctor: slot.doctor._id,
+      client: null, // No client for public bookings
+      patientName,
+      patientEmail,
+      patientPhone,
+      reasonForVisit: reasonForVisit || '',
+      notes: notes || '',
+      status: 'scheduled',
+      history: [{
+        action: 'created',
+        timestamp: new Date(),
+        performedBy: null // No user for public booking
+      }]
+    });
+
+    // CREATE Google Calendar event
+    const calendar = await getCalendarApi(slot.doctor._id);
+
+    const event = await calendar.events.insert({
+      calendarId: slot.doctor.googleCalendarId,
+      requestBody: {
+        summary: `Appointment: ${patientName}`,
+        description: `Patient: ${patientName}\nEmail: ${patientEmail}\nPhone: ${patientPhone}\nType: ${slot.type}\nReason: ${reasonForVisit || 'Not specified'}\n\n(Booked via public widget)`,
+        start: { dateTime: slot.startTime.toISOString() },
+        end: { dateTime: slot.endTime.toISOString() },
+        transparency: 'opaque',
+        attendees: [
+          { email: slot.doctor.email },
+          { email: patientEmail }
+        ],
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'email', minutes: 24 * 60 }, // 1 day before
+            { method: 'popup', minutes: 60 } // 1 hour before
+          ]
+        }
+      }
+    });
+
+    // Save the event ID in both appointment and slot
+    appointment.googleEventId = event.data.id;
+    slot.googleEventId = event.data.id;
+
+    await appointment.save();
+
+    // Mark slot as unavailable
+    slot.isAvailable = false;
+    await slot.save();
+
+    const populatedAppointment = await Appointment.findById(appointment._id)
+      .populate('doctor')
+      .populate('slot');
+
+    // Send notifications to patient and doctor
+    try {
+      const notificationService = require('../services/notificationService');
+
+      const appointmentDate = notificationService.formatAppointmentDate(slot.startTime);
+      const appointmentTime = notificationService.formatAppointmentTime(slot.startTime, slot.endTime);
+
+      // Send confirmation to patient
+      await notificationService.sendPatientConfirmation({
+        patientName,
+        patientEmail,
+        patientPhone,
+        doctorName: slot.doctor.name,
+        appointmentDate,
+        appointmentTime,
+        appointmentType: slot.type,
+        appointmentId: appointment._id.toString()
+      });
+
+      // Send notification to doctor
+      await notificationService.sendDoctorNotification({
+        doctorEmail: slot.doctor.email,
+        doctorName: slot.doctor.name,
+        patientName,
+        patientEmail,
+        patientPhone,
+        appointmentDate,
+        appointmentTime,
+        appointmentType: slot.type,
+        reasonForVisit: reasonForVisit || 'Not specified'
+      });
+
+      console.log('✅ Booking notifications sent successfully');
+    } catch (notifError) {
+      console.error('⚠️ Notification sending failed (non-critical):', notifError);
+      // Don't fail the booking if notifications fail
+    }
+
+    res.json({
+      appointment: populatedAppointment,
+      message: 'Appointment booked successfully! Confirmation email sent.'
+    });
+  } catch (error) {
+    console.error('Public book slot error:', error);
+    res.status(500).json({
+      message: 'Failed to book slot',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 

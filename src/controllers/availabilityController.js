@@ -241,4 +241,25 @@ exports.getAllDoctorsWithAvailability = async (req, res) => {
   }
 };
 
+// Get availability by doctor ID (PUBLIC - for patient booking widget)
+exports.getAvailabilityByDoctorId = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+
+    const availability = await DoctorAvailability.findOne({ doctor: doctorId });
+
+    if (!availability) {
+      return res.status(404).json({ message: 'Availability not found for this doctor' });
+    }
+
+    res.json({ availability });
+  } catch (error) {
+    console.error('Get availability by doctor ID error:', error);
+    res.status(500).json({
+      message: 'Failed to get availability',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 module.exports = exports;
