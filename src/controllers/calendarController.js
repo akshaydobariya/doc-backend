@@ -724,34 +724,46 @@ exports.bookSlotPublic = async (req, res) => {
       }]
     });
 
-    // CREATE Google Calendar event
-    const calendar = await getCalendarApi(slot.doctor._id);
+    // TRY to create Google Calendar event (non-critical for public bookings)
+    try {
+      const calendar = await getCalendarApi(slot.doctor._id);
 
-    const event = await calendar.events.insert({
-      calendarId: slot.doctor.googleCalendarId,
-      requestBody: {
-        summary: `Appointment: ${patientName}`,
-        description: `Patient: ${patientName}\nEmail: ${patientEmail}\nPhone: ${patientPhone}\nType: ${slot.type}\nReason: ${reasonForVisit || 'Not specified'}\n\n(Booked via public widget)`,
-        start: { dateTime: slot.startTime.toISOString() },
-        end: { dateTime: slot.endTime.toISOString() },
-        transparency: 'opaque',
-        attendees: [
-          { email: slot.doctor.email },
-          { email: patientEmail }
-        ],
-        reminders: {
-          useDefault: false,
-          overrides: [
-            { method: 'email', minutes: 24 * 60 }, // 1 day before
-            { method: 'popup', minutes: 60 } // 1 hour before
-          ]
+      const event = await calendar.events.insert({
+        calendarId: slot.doctor.googleCalendarId,
+        requestBody: {
+          summary: `Appointment: ${patientName}`,
+          description: `Patient: ${patientName}\nEmail: ${patientEmail}\nPhone: ${patientPhone}\nType: ${slot.type}\nReason: ${reasonForVisit || 'Not specified'}\n\n(Booked via public widget)`,
+          start: { dateTime: slot.startTime.toISOString() },
+          end: { dateTime: slot.endTime.toISOString() },
+          transparency: 'opaque',
+          attendees: [
+            { email: slot.doctor.email },
+            { email: patientEmail }
+          ],
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'email', minutes: 24 * 60 }, // 1 day before
+              { method: 'popup', minutes: 60 } // 1 hour before
+            ]
+          }
         }
-      }
-    });
+      });
 
-    // Save the event ID in both appointment and slot
-    appointment.googleEventId = event.data.id;
-    slot.googleEventId = event.data.id;
+      // Save the event ID in both appointment and slot
+      appointment.googleEventId = event.data.id;
+      slot.googleEventId = event.data.id;
+      console.log('✅ Google Calendar event created successfully for public booking');
+    } catch (calError) {
+      console.error('⚠️ Google Calendar event creation failed (non-critical for public booking):', calError.message);
+      console.error('Calendar error details:', {
+        code: calError.code,
+        message: calError.message,
+        cause: calError.cause?.message
+      });
+      // Continue without calendar event - appointment is still created
+      // This allows public bookings to succeed even if OAuth tokens are invalid
+    }
 
     await appointment.save();
 
