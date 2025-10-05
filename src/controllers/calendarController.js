@@ -232,6 +232,14 @@ exports.generateSlots = async (req, res) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
     const generatedSlots = [];
+    const skippedReasons = {
+      weekendsSkipped: 0,
+      noAvailabilityConfigured: [],
+      noTimeRemaining: [],
+      blockedSlots: 0,
+      duplicateSlots: 0,
+      totalDaysChecked: 0
+    };
 
     const calendar = await getCalendarApi(doctorId);
     const user = await User.findById(doctorId);
@@ -245,6 +253,7 @@ exports.generateSlots = async (req, res) => {
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       if (isWeekend && !includeWeekends) {
         console.log(`  ⏭️  Skipping weekend day ${dayOfWeek} (includeWeekends=false)`);
+        skippedReasons.weekendsSkipped++;
         continue;
       }
 
@@ -271,6 +280,8 @@ exports.generateSlots = async (req, res) => {
 
       if (!dayAvailability) {
         console.log(`  ❌ No availability configured for day ${dayOfWeek}`);
+        const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
+        skippedReasons.noAvailabilityConfigured.push(dayName);
         continue;
       }
 
@@ -312,6 +323,7 @@ exports.generateSlots = async (req, res) => {
         // If adjusted start time is after end time, skip this day
         if (dayStart >= dayEnd) {
           console.log(`  ⏭️  Skipping today - no available time slots remaining`);
+          skippedReasons.noTimeRemaining.push('Today (past working hours)');
           continue;
         }
       }
@@ -343,7 +355,7 @@ exports.generateSlots = async (req, res) => {
 
             if (slotEnd > restrictionEnd) break;
 
-            await createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId, availability, calendar, user, generatedSlots);
+            await createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId, availability, calendar, user, generatedSlots, skippedReasons);
 
             // Move to next slot (include appointment-specific buffer time)
             const bufferTime = ((appointmentType.bufferBefore || 0) + (appointmentType.bufferAfter || 0)) * 60000;
@@ -360,7 +372,7 @@ exports.generateSlots = async (req, res) => {
 
         if (slotEnd > dayEnd) break;
 
-        await createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId, availability, calendar, user, generatedSlots);
+        await createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId, availability, calendar, user, generatedSlots, skippedReasons);
 
         // Move to next slot (include appointment-specific buffer time)
         const bufferTime = ((appointmentType.bufferBefore || 0) + (appointmentType.bufferAfter || 0)) * 60000;
@@ -368,9 +380,55 @@ exports.generateSlots = async (req, res) => {
       }
     }
 
+    // Build helpful message
+    let message = `Generated ${generatedSlots.length} slots`;
+    const reasons = [];
+
+    if (generatedSlots.length === 0) {
+      reasons.push('❌ No slots were created. Possible reasons:\n');
+
+      if (skippedReasons.weekendsSkipped > 0) {
+        reasons.push(`• ${skippedReasons.weekendsSkipped} weekend day(s) were skipped. Enable "Include Weekends" to generate slots on weekends.`);
+      }
+
+      if (skippedReasons.noAvailabilityConfigured.length > 0) {
+        const days = [...new Set(skippedReasons.noAvailabilityConfigured)].join(', ');
+        reasons.push(`• No working hours configured for: ${days}. Go to Settings → Availability to configure working hours.`);
+      }
+
+      if (skippedReasons.noTimeRemaining.length > 0) {
+        reasons.push(`• Today's working hours have already passed. Try generating slots for tomorrow or future dates.`);
+      }
+
+      if (skippedReasons.duplicateSlots > 0) {
+        reasons.push(`• ${skippedReasons.duplicateSlots} time slot(s) already exist in the system (duplicates are not created).`);
+      }
+
+      if (skippedReasons.blockedSlots > 0) {
+        reasons.push(`• ${skippedReasons.blockedSlots} time slot(s) were blocked due to blocked dates/holidays. Check Settings → Blocked Dates.`);
+      }
+
+      if (reasons.length === 1) {
+        reasons.push('• Your lead time or buffer settings may prevent slot creation.');
+        reasons.push('• The selected date range may not have any working hours configured.');
+      }
+
+      message = reasons.join('\n');
+    }
+
     res.json({
-      message: `Generated ${generatedSlots.length} slots`,
-      slots: generatedSlots
+      message,
+      slots: generatedSlots,
+      summary: {
+        generated: generatedSlots.length,
+        skipped: {
+          weekends: skippedReasons.weekendsSkipped,
+          noAvailability: skippedReasons.noAvailabilityConfigured,
+          noTimeRemaining: skippedReasons.noTimeRemaining.length,
+          blocked: skippedReasons.blockedSlots,
+          duplicates: skippedReasons.duplicateSlots
+        }
+      }
     });
   } catch (error) {
     console.error('Generate slots error:', error);
@@ -379,11 +437,12 @@ exports.generateSlots = async (req, res) => {
 };
 
 // Helper function to create slot if valid
-async function createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId, availability, calendar, user, generatedSlots) {
+async function createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId, availability, calendar, user, generatedSlots, skippedReasons) {
         // Check if slot is blocked
         const isBlocked = isSlotBlocked(currentTime, slotEnd, availability.blockedSlots);
         if (isBlocked) {
           console.log(`    ⛔ Slot blocked: ${currentTime.toISOString()}`);
+          if (skippedReasons) skippedReasons.blockedSlots++;
           return;
         }
 
@@ -396,6 +455,7 @@ async function createSlotIfValid(currentTime, slotEnd, appointmentType, doctorId
 
         if (existingSlot) {
           console.log(`    ⏭️  Slot already exists: ${currentTime.toISOString()}`);
+          if (skippedReasons) skippedReasons.duplicateSlots++;
           return;
         }
 
@@ -478,7 +538,7 @@ exports.getAvailableSlots = async (req, res) => {
     console.log('Availability rules:', availability?.rules);
 
     const now = new Date();
-    const minLeadTime = availability?.rules?.minLeadTime || 0; // Default 0 hours (allow immediate booking for testing)
+    const minLeadTime = availability?.rules?.minLeadTime || 0; // Default 0 hours (allow immediate booking)
     const maxAdvanceBooking = availability?.rules?.maxAdvanceBooking || 365; // Default 1 year
 
     const minBookingTime = new Date(now.getTime() + minLeadTime * 60 * 60 * 1000);
@@ -486,6 +546,7 @@ exports.getAvailableSlots = async (req, res) => {
 
     console.log('Booking time constraints:');
     console.log('  Now:', now.toISOString());
+    console.log('  Min Lead Time (hours):', minLeadTime);
     console.log('  Min booking time:', minBookingTime.toISOString());
     console.log('  Max booking time:', maxBookingTime.toISOString());
 
@@ -497,10 +558,16 @@ exports.getAvailableSlots = async (req, res) => {
     console.log('  Query Start:', queryStartDate.toISOString());
     console.log('  Query End:', queryEndDate.toISOString());
 
-    const actualStartTime = new Date(Math.max(queryStartDate.getTime(), minBookingTime.getTime()));
+    // For same-day bookings, use the max of query start or min booking time
+    // For future dates, use the query start date as-is
+    const isToday = queryStartDate.toDateString() === now.toDateString();
+    const actualStartTime = isToday
+      ? new Date(Math.max(queryStartDate.getTime(), minBookingTime.getTime()))
+      : queryStartDate;
     const actualEndTime = new Date(Math.min(queryEndDate.getTime(), maxBookingTime.getTime()));
 
     console.log('Actual query range after applying rules:');
+    console.log('  Is Today:', isToday);
     console.log('  Actual Start:', actualStartTime.toISOString());
     console.log('  Actual End:', actualEndTime.toISOString());
 
