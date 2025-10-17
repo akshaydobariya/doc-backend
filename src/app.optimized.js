@@ -88,18 +88,45 @@ app.use((req, res, next) => {
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .then(() => {
+    console.log('✅ Connected to MongoDB');
+
+    // Initialize webhook monitor after MongoDB connection
+    // Only in non-test and non-Vercel environments (Vercel uses serverless)
+    if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+      try {
+        const webhookMonitor = require('./services/webhookMonitor.enhanced');
+        webhookMonitor.start();
+        console.log('✅ Webhook monitor initialized - auto-renewal enabled');
+        console.log('   📅 Checks every 6 hours for expiring webhooks');
+      } catch (error) {
+        console.error('⚠️  Webhook monitor failed to start:', error.message);
+        console.error('   Continuing without automatic webhook renewal');
+        console.error('   Manual renewal will be required via API endpoint');
+      }
+    } else {
+      console.log('ℹ️  Webhook monitor skipped (Vercel serverless environment)');
+      console.log('   Use API endpoint /api/webhook/check-and-renew for manual renewal');
+    }
+  })
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Import routes
 const authRoutes = require('./routes/auth');
 const calendarRoutes = require('./routes/calendar');
 const appointmentRoutes = require('./routes/appointments');
-const webhookRoutes = require('./routes/webhook');
 const usersRoutes = require('./routes/users');
 const availabilityRoutes = require('./routes/availability');
-const pageRoutes = require('./routes/pages');
-const websiteRoutes = require('./routes/websites');
+
+// Use enhanced webhook routes with optimizations
+let webhookRoutes;
+try {
+  webhookRoutes = require('./routes/webhook.enhanced');
+  console.log('✅ Using enhanced webhook routes (optimized)');
+} catch (error) {
+  console.warn('⚠️  Enhanced webhook routes not found, using standard routes');
+  webhookRoutes = require('./routes/webhook');
+}
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -108,12 +135,28 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/availability', availabilityRoutes);
-app.use('/api', pageRoutes); // Destack page builder routes
-app.use('/api/websites', websiteRoutes); // Website management routes
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 
 // Basic route for testing
 app.get('/', (req, res) => {
-  res.json({ message: 'Dental Appointment Booking API' });
+  res.json({
+    message: 'Dental Appointment Booking API - Optimized Version',
+    version: '2.0.0',
+    optimizations: {
+      lazyCalendarSync: true,
+      incrementalWebhookSync: true,
+      autoWebhookRenewal: !process.env.VERCEL
+    }
+  });
 });
 
 const PORT = process.env.PORT || 5000;
@@ -121,7 +164,9 @@ const PORT = process.env.PORT || 5000;
 // Only start server if not in Vercel environment
 if (process.env.VERCEL !== '1') {
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 API Base: http://localhost:${PORT}`);
   });
 }
 

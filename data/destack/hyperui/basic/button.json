@@ -1,0 +1,28 @@
+{
+  "id": "button",
+  "name": "Button",
+  "category": "Basic",
+  "folder": "basic",
+  "source": "<button class=\"px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors duration-200\">Sample Button</button>",
+  "preview": "/themes/hyperui/basic/button.png",
+  "tags": ["button", "action", "basic"],
+  "settings": {
+    "text": {
+      "type": "text",
+      "label": "Button Text",
+      "default": "Sample Button"
+    },
+    "color": {
+      "type": "select",
+      "label": "Color",
+      "options": ["blue", "green", "red", "gray"],
+      "default": "blue"
+    },
+    "size": {
+      "type": "select",
+      "label": "Size",
+      "options": ["small", "medium", "large"],
+      "default": "medium"
+    }
+  }
+}

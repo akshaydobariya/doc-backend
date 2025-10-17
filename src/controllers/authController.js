@@ -90,8 +90,14 @@ exports.googleCallback = async (req, res) => {
     }
 
     // Set user session
-    req.session.userId = user._id;
-    req.session.role = user.role;
+    req.session.user = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      picture: user.picture,
+      calendarConnected: user.calendarConnected
+    };
 
     console.log('Session set:', { userId: user._id, role: user.role, sessionID: req.sessionID });
 
@@ -193,30 +199,35 @@ exports.googleCallback = async (req, res) => {
 exports.getCurrentUser = async (req, res) => {
   console.log('getCurrentUser called - Session ID:', req.sessionID);
   console.log('getCurrentUser - Session data:', req.session);
-  console.log('getCurrentUser - User ID from session:', req.session.userId);
+  console.log('getCurrentUser - User from session:', req.session.user);
 
-  if (!req.session.userId) {
-    console.log('No userId in session - returning 401');
+  if (!req.session.user) {
+    console.log('No user in session - returning 401');
     return res.status(401).json({ message: 'Not authenticated' });
   }
 
   try {
-    const user = await User.findById(req.session.userId);
+    // Get fresh user data from database to ensure up-to-date info
+    const user = await User.findById(req.session.user.id);
     if (!user) {
-      console.log('User not found in database:', req.session.userId);
+      console.log('User not found in database:', req.session.user.id);
       return res.status(404).json({ message: 'User not found' });
     }
 
     console.log('User found:', user.email);
+
+    // Update session with fresh data
+    req.session.user = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      picture: user.picture,
+      calendarConnected: user.calendarConnected
+    };
+
     res.json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        picture: user.picture,
-        calendarConnected: user.calendarConnected
-      }
+      user: req.session.user
     });
   } catch (error) {
     console.error('Get current user error:', error);

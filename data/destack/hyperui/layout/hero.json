@@ -1,0 +1,31 @@
+{
+  "id": "hero",
+  "name": "Hero Section",
+  "category": "Layout",
+  "folder": "layout",
+  "source": "<section class=\"bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20 px-6\"><div class=\"max-w-4xl mx-auto text-center\"><h1 class=\"text-5xl font-bold mb-6\">Welcome to Our Platform</h1><p class=\"text-xl mb-8 opacity-90\">Build amazing websites with our intuitive drag-and-drop page builder</p><div class=\"space-x-4\"><button class=\"bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors\">Get Started</button><button class=\"border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors\">Learn More</button></div></div></section>",
+  "preview": "/themes/hyperui/layout/hero.png",
+  "tags": ["hero", "header", "layout"],
+  "settings": {
+    "title": {
+      "type": "text",
+      "label": "Hero Title",
+      "default": "Welcome to Our Platform"
+    },
+    "subtitle": {
+      "type": "text",
+      "label": "Subtitle",
+      "default": "Build amazing websites with our intuitive drag-and-drop page builder"
+    },
+    "primaryButtonText": {
+      "type": "text",
+      "label": "Primary Button Text",
+      "default": "Get Started"
+    },
+    "secondaryButtonText": {
+      "type": "text",
+      "label": "Secondary Button Text",
+      "default": "Learn More"
+    }
+  }
+}

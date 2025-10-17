@@ -1,0 +1,22 @@
+{
+  "id": "text-block",
+  "name": "Text Block",
+  "category": "Basic",
+  "folder": "basic",
+  "source": "<div class=\"p-4 bg-white rounded-lg shadow-sm\"><h2 class=\"text-2xl font-bold text-gray-800 mb-2\">Sample Text</h2><p class=\"text-gray-600\">This is a sample text component. You can edit this text by clicking on it.</p></div>",
+  "preview": "/themes/hyperui/basic/text-block.png",
+  "tags": ["text", "content", "basic"],
+  "settings": {
+    "text": {
+      "type": "textarea",
+      "label": "Text Content",
+      "default": "Sample Text"
+    },
+    "fontSize": {
+      "type": "select",
+      "label": "Font Size",
+      "options": ["small", "medium", "large", "xl"],
+      "default": "medium"
+    }
+  }
+}

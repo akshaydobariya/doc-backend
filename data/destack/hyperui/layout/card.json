@@ -1,0 +1,26 @@
+{
+  "id": "card",
+  "name": "Card",
+  "category": "Layout",
+  "folder": "layout",
+  "source": "<div class=\"bg-white rounded-xl shadow-lg p-6\"><div class=\"h-48 bg-gray-200 rounded-lg mb-4 flex items-center justify-center\"><span class=\"text-gray-500\">Image Placeholder</span></div><h3 class=\"text-xl font-semibold text-gray-800 mb-2\">Card Title</h3><p class=\"text-gray-600 mb-4\">This is a sample card component with an image, title, and description.</p><button class=\"w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors\">Learn More</button></div>",
+  "preview": "/themes/hyperui/layout/card.png",
+  "tags": ["card", "layout", "container"],
+  "settings": {
+    "title": {
+      "type": "text",
+      "label": "Card Title",
+      "default": "Card Title"
+    },
+    "description": {
+      "type": "textarea",
+      "label": "Description",
+      "default": "This is a sample card component with an image, title, and description."
+    },
+    "buttonText": {
+      "type": "text",
+      "label": "Button Text",
+      "default": "Learn More"
+    }
+  }
+}

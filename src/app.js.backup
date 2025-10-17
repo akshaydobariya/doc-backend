@@ -98,8 +98,6 @@ const appointmentRoutes = require('./routes/appointments');
 const webhookRoutes = require('./routes/webhook');
 const usersRoutes = require('./routes/users');
 const availabilityRoutes = require('./routes/availability');
-const pageRoutes = require('./routes/pages');
-const websiteRoutes = require('./routes/websites');
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -108,8 +106,6 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/availability', availabilityRoutes);
-app.use('/api', pageRoutes); // Destack page builder routes
-app.use('/api/websites', websiteRoutes); // Website management routes
 
 // Basic route for testing
 app.get('/', (req, res) => {
