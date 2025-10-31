@@ -298,7 +298,7 @@ const dentalServiceSchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-dentalServiceSchema.index({ slug: 1 });
+// Note: slug index is already created by unique: true
 dentalServiceSchema.index({ category: 1, isActive: 1 });
 dentalServiceSchema.index({ isActive: 1, isPopular: 1 });
 dentalServiceSchema.index({ 'seo.keywords': 1 });

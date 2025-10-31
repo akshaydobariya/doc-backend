@@ -70,7 +70,7 @@ const pageSchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-pageSchema.index({ slug: 1 });
+// Note: slug index is already created by unique: true
 pageSchema.index({ status: 1 });
 pageSchema.index({ createdAt: -1 });
 

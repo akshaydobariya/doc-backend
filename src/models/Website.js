@@ -187,7 +187,7 @@ const WebsiteSchema = new mongoose.Schema({
 
 // Indexes for performance
 WebsiteSchema.index({ doctorId: 1, status: 1 });
-WebsiteSchema.index({ subdomain: 1 });
+// Note: subdomain index is already created by unique: true
 WebsiteSchema.index({ customDomain: 1 });
 WebsiteSchema.index({ 'deployment.deploymentId': 1 });
 
