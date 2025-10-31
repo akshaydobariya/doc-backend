@@ -1,0 +1,460 @@
+/**
+ * Predefined Dental Services Data
+ * Comprehensive list of common dental services with optimized SEO data
+ * This data can be seeded into the database for initial setup
+ */
+
+const dentalServicesData = [
+  // General Dentistry
+  {
+    name: "Dental Cleaning",
+    slug: "dental-cleaning",
+    category: "general-dentistry",
+    subcategory: "preventive",
+    shortDescription: "Professional teeth cleaning and plaque removal to maintain optimal oral health and prevent gum disease.",
+    fullDescription: "Professional dental cleaning is a preventive treatment that removes plaque, tartar, and bacteria from your teeth and gums. Our skilled hygienists use specialized tools to clean areas that regular brushing and flossing cannot reach, helping prevent cavities, gum disease, and bad breath.",
+    benefits: [
+      "Prevents cavities and tooth decay",
+      "Reduces risk of gum disease",
+      "Removes stubborn plaque and tartar",
+      "Freshens breath naturally",
+      "Early detection of dental problems",
+      "Maintains overall oral health"
+    ],
+    faqs: [
+      {
+        question: "How often should I get my teeth cleaned?",
+        answer: "Most dentists recommend professional cleaning every 6 months. However, some patients with gum disease or high risk factors may need more frequent cleanings every 3-4 months."
+      },
+      {
+        question: "Does dental cleaning hurt?",
+        answer: "Professional cleaning is generally painless. You may experience slight discomfort if you have sensitive teeth or gums, but most patients find it comfortable and refreshing."
+      },
+      {
+        question: "How long does a dental cleaning take?",
+        answer: "A routine cleaning typically takes 30-60 minutes, depending on the amount of plaque buildup and whether you need additional treatments like fluoride application."
+      }
+    ],
+    duration: {
+      procedure: 45,
+      recovery: "None required"
+    },
+    seo: {
+      metaTitle: "Professional Dental Cleaning | Preventive Dental Care",
+      metaDescription: "Professional teeth cleaning removes plaque & tartar, prevents gum disease. Book your dental cleaning appointment today for optimal oral health.",
+      keywords: ["dental cleaning", "teeth cleaning", "preventive dentistry", "oral hygiene", "plaque removal", "tartar removal"],
+      focusKeyword: "dental cleaning"
+    },
+    isPopular: true,
+    requiresConsultation: false
+  },
+
+  {
+    name: "Dental Examination",
+    slug: "dental-examination",
+    category: "general-dentistry",
+    subcategory: "diagnostic",
+    shortDescription: "Comprehensive oral health assessment to detect problems early and maintain optimal dental health.",
+    fullDescription: "A thorough dental examination includes visual inspection, X-rays, and diagnostic tests to assess your overall oral health. We check for cavities, gum disease, oral cancer, and other potential issues to ensure early detection and treatment.",
+    benefits: [
+      "Early detection of dental problems",
+      "Prevents minor issues from becoming major",
+      "Oral cancer screening",
+      "Assessment of existing dental work",
+      "Personalized treatment planning",
+      "Peace of mind about oral health"
+    ],
+    duration: {
+      procedure: 30,
+      recovery: "None required"
+    },
+    seo: {
+      metaTitle: "Comprehensive Dental Exam | Oral Health Assessment",
+      metaDescription: "Complete dental examination with X-rays and oral cancer screening. Early detection for optimal oral health. Schedule your exam today.",
+      keywords: ["dental exam", "oral health assessment", "dental checkup", "oral cancer screening", "dental X-rays"],
+      focusKeyword: "dental examination"
+    },
+    isPopular: true,
+    requiresConsultation: false
+  },
+
+  {
+    name: "Dental Fillings",
+    slug: "dental-fillings",
+    category: "general-dentistry",
+    subcategory: "restorative",
+    shortDescription: "Tooth-colored composite fillings to restore cavities and damaged teeth while maintaining natural appearance.",
+    fullDescription: "Modern dental fillings use tooth-colored composite materials that blend seamlessly with your natural teeth. We remove decay and restore the tooth's structure, function, and appearance with durable, mercury-free materials.",
+    benefits: [
+      "Stops cavity progression",
+      "Restores tooth function",
+      "Natural tooth appearance",
+      "Mercury-free materials",
+      "Long-lasting durability",
+      "Preserves tooth structure"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 150, max: 400 },
+      currency: "USD",
+      priceNote: "Price varies by size and location of filling"
+    },
+    duration: {
+      procedure: 60,
+      recovery: "24-48 hours for sensitivity to subside"
+    },
+    seo: {
+      metaTitle: "Tooth-Colored Dental Fillings | Cavity Treatment",
+      metaDescription: "Natural-looking composite fillings for cavities. Mercury-free, durable tooth restoration. Schedule your dental filling appointment today.",
+      keywords: ["dental fillings", "composite fillings", "tooth-colored fillings", "cavity treatment", "mercury-free fillings"],
+      focusKeyword: "dental fillings"
+    },
+    isPopular: true
+  },
+
+  // Cosmetic Dentistry
+  {
+    name: "Teeth Whitening",
+    slug: "teeth-whitening",
+    category: "cosmetic-dentistry",
+    subcategory: "aesthetic",
+    shortDescription: "Professional teeth whitening treatment to brighten your smile and remove stains for a confident appearance.",
+    fullDescription: "Professional teeth whitening uses advanced bleaching technology to safely remove stains and discoloration from your teeth. Our in-office treatment can brighten your smile by several shades in just one visit.",
+    benefits: [
+      "Dramatically whiter teeth",
+      "Removes stubborn stains",
+      "Safe professional treatment",
+      "Instant confidence boost",
+      "Long-lasting results",
+      "Customized to your needs"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 300, max: 800 },
+      currency: "USD",
+      priceNote: "In-office vs. take-home options available"
+    },
+    duration: {
+      procedure: 90,
+      recovery: "Avoid staining foods for 48 hours"
+    },
+    seo: {
+      metaTitle: "Professional Teeth Whitening | Brighter Smile Treatment",
+      metaDescription: "Professional teeth whitening removes stains & brightens your smile. Safe, effective treatment with lasting results. Book consultation today.",
+      keywords: ["teeth whitening", "professional whitening", "brighter smile", "stain removal", "cosmetic dentistry"],
+      focusKeyword: "teeth whitening"
+    },
+    isPopular: true,
+    isPremium: true
+  },
+
+  {
+    name: "Porcelain Veneers",
+    slug: "porcelain-veneers",
+    category: "cosmetic-dentistry",
+    subcategory: "restoration",
+    shortDescription: "Custom porcelain veneers to transform your smile by correcting shape, color, and alignment imperfections.",
+    fullDescription: "Porcelain veneers are thin, custom-made shells that cover the front surface of your teeth. They provide a natural-looking solution for chips, cracks, gaps, discoloration, and minor misalignment issues.",
+    benefits: [
+      "Complete smile transformation",
+      "Natural porcelain appearance",
+      "Stain-resistant material",
+      "Minimal tooth preparation",
+      "Long-lasting results",
+      "Corrects multiple imperfections"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 800, max: 2000 },
+      currency: "USD",
+      priceNote: "Per tooth, multiple teeth packages available"
+    },
+    duration: {
+      consultation: 30,
+      procedure: 120,
+      recovery: "Avoid hard foods for first week"
+    },
+    seo: {
+      metaTitle: "Porcelain Veneers | Smile Transformation Treatment",
+      metaDescription: "Custom porcelain veneers for a perfect smile. Fix chips, gaps, stains & misalignment. Consultation available. Transform your smile today.",
+      keywords: ["porcelain veneers", "cosmetic veneers", "smile makeover", "dental veneers", "teeth transformation"],
+      focusKeyword: "porcelain veneers"
+    },
+    isPremium: true,
+    requiresConsultation: true
+  },
+
+  // Orthodontics
+  {
+    name: "Invisalign Clear Aligners",
+    slug: "invisalign-clear-aligners",
+    category: "orthodontics",
+    subcategory: "alignment",
+    shortDescription: "Invisible aligners to straighten teeth discreetly without traditional metal braces for adults and teens.",
+    fullDescription: "Invisalign uses a series of clear, removable aligners to gradually straighten your teeth. The virtually invisible treatment allows you to maintain your lifestyle while achieving a perfectly aligned smile.",
+    benefits: [
+      "Virtually invisible treatment",
+      "Removable for eating and cleaning",
+      "No dietary restrictions",
+      "Comfortable plastic material",
+      "Predictable treatment timeline",
+      "Improved oral hygiene during treatment"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 3000, max: 8000 },
+      currency: "USD",
+      priceNote: "Cost depends on complexity and treatment duration"
+    },
+    duration: {
+      consultation: 60,
+      procedure: 18, // months
+      recovery: "Adjustment period of 2-3 days per new aligner"
+    },
+    seo: {
+      metaTitle: "Invisalign Clear Aligners | Invisible Braces Treatment",
+      metaDescription: "Straighten teeth with invisible Invisalign aligners. Comfortable, removable alternative to braces. Free consultation available.",
+      keywords: ["Invisalign", "clear aligners", "invisible braces", "teeth straightening", "orthodontic treatment"],
+      focusKeyword: "Invisalign clear aligners"
+    },
+    isPopular: true,
+    isPremium: true,
+    requiresConsultation: true
+  },
+
+  {
+    name: "Traditional Braces",
+    slug: "traditional-braces",
+    category: "orthodontics",
+    subcategory: "alignment",
+    shortDescription: "Metal braces for comprehensive teeth straightening and bite correction for all ages and complex cases.",
+    fullDescription: "Traditional metal braces remain the most effective treatment for complex orthodontic cases. Modern braces are smaller, more comfortable, and more efficient than ever before, providing reliable results for all ages.",
+    benefits: [
+      "Most effective for complex cases",
+      "Precise tooth movement control",
+      "Suitable for all ages",
+      "Cost-effective treatment",
+      "Proven long-term results",
+      "Can correct severe misalignment"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 2500, max: 6000 },
+      currency: "USD",
+      priceNote: "Payment plans available, insurance often covers portion"
+    },
+    duration: {
+      consultation: 60,
+      procedure: 24, // months average
+      recovery: "Adjustment soreness for 3-5 days after appointments"
+    },
+    seo: {
+      metaTitle: "Traditional Metal Braces | Comprehensive Orthodontic Treatment",
+      metaDescription: "Effective metal braces for teeth straightening and bite correction. Suitable for all ages. Consultation and payment plans available.",
+      keywords: ["metal braces", "traditional braces", "orthodontic treatment", "teeth straightening", "bite correction"],
+      focusKeyword: "traditional braces"
+    },
+    requiresConsultation: true
+  },
+
+  // Oral Surgery
+  {
+    name: "Dental Implants",
+    slug: "dental-implants",
+    category: "oral-surgery",
+    subcategory: "replacement",
+    shortDescription: "Permanent tooth replacement solution using titanium implants for natural function and appearance.",
+    fullDescription: "Dental implants are the gold standard for tooth replacement. A titanium post is surgically placed in the jawbone to replace the tooth root, then topped with a natural-looking crown for a permanent solution.",
+    benefits: [
+      "Permanent tooth replacement",
+      "Natural chewing function",
+      "Preserves jawbone density",
+      "No impact on adjacent teeth",
+      "Long-lasting durability",
+      "Improved oral health"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 3000, max: 6000 },
+      currency: "USD",
+      priceNote: "Per implant, includes crown and abutment"
+    },
+    duration: {
+      consultation: 60,
+      procedure: 120,
+      recovery: "3-6 months for osseointegration"
+    },
+    seo: {
+      metaTitle: "Dental Implants | Permanent Tooth Replacement Solution",
+      metaDescription: "Replace missing teeth with dental implants. Natural function & appearance. Consultation available. Restore your smile permanently.",
+      keywords: ["dental implants", "tooth replacement", "implant surgery", "missing teeth", "permanent solution"],
+      focusKeyword: "dental implants"
+    },
+    isPremium: true,
+    requiresConsultation: true
+  },
+
+  {
+    name: "Wisdom Tooth Extraction",
+    slug: "wisdom-tooth-extraction",
+    category: "oral-surgery",
+    subcategory: "extraction",
+    shortDescription: "Safe removal of problematic wisdom teeth to prevent crowding, pain, and oral health complications.",
+    fullDescription: "Wisdom tooth extraction removes third molars that don't have enough room to emerge properly. This prevents crowding, decay, gum disease, and other complications associated with impacted wisdom teeth.",
+    benefits: [
+      "Prevents tooth crowding",
+      "Eliminates pain and discomfort",
+      "Reduces infection risk",
+      "Easier oral hygiene maintenance",
+      "Prevents damage to adjacent teeth",
+      "Improves overall oral health"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 200, max: 800 },
+      currency: "USD",
+      priceNote: "Simple extraction vs. surgical removal, sedation options available"
+    },
+    duration: {
+      consultation: 30,
+      procedure: 45,
+      recovery: "3-7 days for initial healing"
+    },
+    seo: {
+      metaTitle: "Wisdom Tooth Extraction | Safe Wisdom Teeth Removal",
+      metaDescription: "Professional wisdom tooth extraction to prevent crowding and pain. Sedation options available. Schedule consultation today.",
+      keywords: ["wisdom tooth extraction", "wisdom teeth removal", "oral surgery", "tooth extraction", "impacted wisdom teeth"],
+      focusKeyword: "wisdom tooth extraction"
+    },
+    isPopular: true
+  },
+
+  // Pediatric Dentistry
+  {
+    name: "Children's Dental Cleaning",
+    slug: "childrens-dental-cleaning",
+    category: "pediatric-dentistry",
+    subcategory: "preventive",
+    shortDescription: "Gentle dental cleaning for children to establish healthy oral hygiene habits and prevent cavities.",
+    fullDescription: "Our pediatric dental cleanings are designed specifically for children's needs. We use gentle techniques and age-appropriate explanations to make the experience positive while thoroughly cleaning their teeth.",
+    benefits: [
+      "Establishes good oral hygiene habits",
+      "Prevents childhood cavities",
+      "Positive dental experience",
+      "Early problem detection",
+      "Education for parents and children",
+      "Gentle, child-friendly approach"
+    ],
+    duration: {
+      procedure: 30,
+      recovery: "None required"
+    },
+    seo: {
+      metaTitle: "Children's Dental Cleaning | Pediatric Dental Care",
+      metaDescription: "Gentle dental cleaning for kids. Child-friendly environment, experienced pediatric team. Schedule your child's cleaning today.",
+      keywords: ["children's dental cleaning", "pediatric dentistry", "kids dental care", "children's teeth cleaning"],
+      focusKeyword: "children's dental cleaning"
+    },
+    isPopular: true
+  },
+
+  {
+    name: "Dental Sealants",
+    slug: "dental-sealants",
+    category: "pediatric-dentistry",
+    subcategory: "preventive",
+    shortDescription: "Protective sealants for children's molars to prevent cavities in hard-to-reach back teeth.",
+    fullDescription: "Dental sealants are thin protective coatings applied to the chewing surfaces of back teeth. They create a barrier against bacteria and food particles, significantly reducing the risk of cavities in children.",
+    benefits: [
+      "Prevents cavities in molars",
+      "Quick and painless application",
+      "Long-lasting protection",
+      "No anesthesia required",
+      "Cost-effective prevention",
+      "Reduces need for future fillings"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 30, max: 80 },
+      currency: "USD",
+      priceNote: "Per tooth, often covered by insurance"
+    },
+    duration: {
+      procedure: 20,
+      recovery: "None required"
+    },
+    seo: {
+      metaTitle: "Dental Sealants for Kids | Cavity Prevention Treatment",
+      metaDescription: "Protect children's teeth with dental sealants. Painless cavity prevention for molars. Often covered by insurance. Book today.",
+      keywords: ["dental sealants", "cavity prevention", "children's dental care", "pediatric sealants", "molar protection"],
+      focusKeyword: "dental sealants"
+    },
+    isPopular: true
+  },
+
+  // Emergency Dentistry
+  {
+    name: "Emergency Dental Care",
+    slug: "emergency-dental-care",
+    category: "emergency-dentistry",
+    subcategory: "urgent",
+    shortDescription: "Immediate dental care for urgent pain, trauma, and dental emergencies when you need help most.",
+    fullDescription: "Emergency dental care provides immediate relief for severe tooth pain, dental trauma, lost fillings, broken teeth, and other urgent dental situations. We offer same-day appointments for true emergencies.",
+    benefits: [
+      "Immediate pain relief",
+      "Same-day emergency appointments",
+      "Prevents complications",
+      "24/7 emergency contact",
+      "Comprehensive trauma care",
+      "Peace of mind"
+    ],
+    duration: {
+      procedure: 60,
+      recovery: "Varies by treatment provided"
+    },
+    seo: {
+      metaTitle: "Emergency Dental Care | Urgent Dental Treatment",
+      metaDescription: "Emergency dental care for severe pain, broken teeth, and dental trauma. Same-day appointments available. Call now for urgent care.",
+      keywords: ["emergency dental care", "dental emergency", "urgent dental care", "tooth pain relief", "dental trauma"],
+      focusKeyword: "emergency dental care"
+    },
+    isPopular: true
+  },
+
+  // Periodontics
+  {
+    name: "Gum Disease Treatment",
+    slug: "gum-disease-treatment",
+    category: "periodontics",
+    subcategory: "treatment",
+    shortDescription: "Comprehensive treatment for gum disease to restore gum health and prevent tooth loss.",
+    fullDescription: "Gum disease treatment ranges from deep cleaning to advanced periodontal therapy. We provide comprehensive care to eliminate infection, reduce inflammation, and restore healthy gums.",
+    benefits: [
+      "Stops gum disease progression",
+      "Prevents tooth loss",
+      "Eliminates bacterial infection",
+      "Reduces inflammation",
+      "Improves overall health",
+      "Restores gum health"
+    ],
+    pricing: {
+      hasFixedPrice: false,
+      priceRange: { min: 200, max: 1500 },
+      currency: "USD",
+      priceNote: "Scaling and root planing to surgical options"
+    },
+    duration: {
+      consultation: 45,
+      procedure: 90,
+      recovery: "1-2 weeks for healing"
+    },
+    seo: {
+      metaTitle: "Gum Disease Treatment | Periodontal Therapy",
+      metaDescription: "Comprehensive gum disease treatment to restore gum health and prevent tooth loss. From cleaning to advanced therapy. Schedule today.",
+      keywords: ["gum disease treatment", "periodontal therapy", "gum infection", "gingivitis treatment", "periodontitis"],
+      focusKeyword: "gum disease treatment"
+    }
+  }
+];
+
+module.exports = dentalServicesData;

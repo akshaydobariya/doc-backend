@@ -27,6 +27,40 @@ const {
 // GET /api/websites/subdomain/:subdomain/available - Check subdomain availability (PUBLIC)
 router.get('/subdomain/:subdomain/available', checkSubdomainAvailability);
 
+// GET /api/websites/public/info/:id - Get basic website info by ID (PUBLIC) - MUST COME BEFORE /public/:subdomain
+router.get('/public/info/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const Website = require('../models/Website');
+
+    const website = await Website.findById(id).select('name subdomain location');
+
+    if (!website) {
+      return res.status(404).json({
+        success: false,
+        message: 'Website not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        _id: website._id,
+        name: website.name,
+        subdomain: website.subdomain,
+        location: website.location
+      }
+    });
+  } catch (error) {
+    console.error('Get website public info error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch website information',
+      error: error.message
+    });
+  }
+});
+
 // GET /api/websites/public/:subdomain/* - Serve published website files (PUBLIC)
 router.get('/public/:subdomain/*path', servePublishedWebsite);
 

@@ -80,9 +80,6 @@ app.use(session({
 
 // Session debugging middleware
 app.use((req, res, next) => {
-  console.log('Session ID:', req.sessionID);
-  console.log('Session data:', req.session);
-  console.log('Cookies:', req.headers.cookie);
   next();
 });
 
@@ -100,6 +97,10 @@ const usersRoutes = require('./routes/users');
 const availabilityRoutes = require('./routes/availability');
 const pageRoutes = require('./routes/pages');
 const websiteRoutes = require('./routes/websites');
+const servicesRoutes = require('./routes/services');
+const servicePagesRoutes = require('./routes/servicePages');
+const unifiedContentRoutes = require('./routes/unifiedContent');
+const dynamicSitesRoutes = require('./routes/dynamicSites');
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -108,8 +109,12 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/availability', availabilityRoutes);
-app.use('/api', pageRoutes); // Destack page builder routes
+app.use('/api/services', servicesRoutes); // Move services route BEFORE pageRoutes
+app.use('/api/service-pages', servicePagesRoutes); // Service page editing routes
+app.use('/api/unified-content', unifiedContentRoutes); // Unified content management routes
 app.use('/api/websites', websiteRoutes); // Website management routes
+app.use('/api/dynamic', dynamicSitesRoutes); // Dynamic site serving routes
+app.use('/api', pageRoutes); // Destack page builder routes (catch-all should be last)
 
 // Basic route for testing
 app.get('/', (req, res) => {

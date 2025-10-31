@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const Website = require('../models/Website');
+const ServicePage = require('../models/ServicePage');
 
 /**
  * Static Site Generator Service
@@ -57,6 +58,33 @@ class StaticSiteGenerator {
         });
       }
 
+      // Generate service pages
+      const servicePages = await ServicePage.find({
+        websiteId: websiteId,
+        status: 'published',
+        isActive: true
+      }).populate('serviceId');
+
+      // Create services directory
+      const servicesDir = path.join(siteDir, 'services');
+      await this.ensureDir(servicesDir);
+
+      for (const servicePage of servicePages) {
+        const htmlContent = await this.generateServicePageHTML(servicePage, currentVersion.globalSettings, website);
+        const fileName = `${servicePage.slug}.html`;
+        const filePath = path.join(servicesDir, fileName);
+
+        await fs.writeFile(filePath, htmlContent);
+        result.files.push({
+          type: 'service-page',
+          page: servicePage.slug,
+          title: servicePage.title,
+          path: filePath,
+          fileName,
+          serviceId: servicePage.serviceId._id
+        });
+      }
+
       // Generate CSS file
       const cssContent = this.generateCSS(currentVersion.globalSettings);
       const cssPath = path.join(siteDir, 'styles.css');
@@ -68,7 +96,7 @@ class StaticSiteGenerator {
       });
 
       // Generate sitemap.xml
-      const sitemapContent = this.generateSitemap(currentVersion.pages, website);
+      const sitemapContent = this.generateSitemap(currentVersion.pages, servicePages, website);
       const sitemapPath = path.join(siteDir, 'sitemap.xml');
       await fs.writeFile(sitemapPath, sitemapContent);
       result.files.push({
@@ -262,6 +290,362 @@ class StaticSiteGenerator {
   }
 
   /**
+   * Generate HTML for a service page
+   * @param {Object} servicePage - Service page data
+   * @param {Object} globalSettings - Global website settings
+   * @param {Object} website - Website object
+   * @returns {string} HTML content
+   */
+  async generateServicePageHTML(servicePage, globalSettings, website) {
+    const content = servicePage.content;
+    let componentsHTML = '';
+
+    // Check if service page has custom components (visual editing mode)
+    const currentVersionData = servicePage.getCurrentVersionData();
+    if (currentVersionData && currentVersionData.components && currentVersionData.components.length > 0) {
+      // Use components from visual editor
+      componentsHTML = this.generateServicePageComponentsHTML(currentVersionData.components, content);
+    } else {
+      // Generate HTML from template content structure
+      componentsHTML = this.generateServicePageTemplateHTML(content);
+    }
+
+    const structuredData = servicePage.generateStructuredData();
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${servicePage.seo?.metaTitle || servicePage.title}</title>
+  <meta name="description" content="${servicePage.seo?.metaDescription || content.overview?.content?.substring(0, 160) || ''}">
+  ${servicePage.seo?.keywords?.length ? `<meta name="keywords" content="${servicePage.seo.keywords.join(', ')}">` : ''}
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${website.getPublicUrl()}/services/${servicePage.slug}">
+  <meta property="og:title" content="${servicePage.seo?.metaTitle || servicePage.title}">
+  <meta property="og:description" content="${servicePage.seo?.metaDescription || ''}">
+  ${servicePage.seo?.ogImage ? `<meta property="og:image" content="${servicePage.seo.ogImage}">` : ''}
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="${website.getPublicUrl()}/services/${servicePage.slug}">
+  <meta property="twitter:title" content="${servicePage.seo?.metaTitle || servicePage.title}">
+  <meta property="twitter:description" content="${servicePage.seo?.metaDescription || ''}">
+  ${servicePage.seo?.ogImage ? `<meta property="twitter:image" content="${servicePage.seo.ogImage}">` : ''}
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+    ${JSON.stringify(structuredData, null, 2)}
+  </script>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Analytics -->
+  ${globalSettings.googleAnalytics ? this.generateGoogleAnalytics(globalSettings.googleAnalytics) : ''}
+  ${globalSettings.facebookPixel ? this.generateFacebookPixel(globalSettings.facebookPixel) : ''}
+
+  <!-- Custom CSS -->
+  ${globalSettings.customCSS ? `<style>${globalSettings.customCSS}</style>` : ''}
+
+  <style>
+    :root {
+      --primary-color: ${servicePage.design?.colorScheme?.primary || globalSettings.primaryColor || '#2563eb'};
+      --secondary-color: ${servicePage.design?.colorScheme?.secondary || globalSettings.secondaryColor || '#64748b'};
+      --accent-color: ${servicePage.design?.colorScheme?.accent || '#10b981'};
+      --font-family: ${globalSettings.fontFamily || 'Inter, sans-serif'};
+    }
+
+    body {
+      font-family: var(--font-family);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    /* Service page specific styles */
+    .service-hero {
+      background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+      color: white;
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+
+    .service-section {
+      padding: 3rem 0;
+    }
+
+    .service-benefits {
+      background: #f8f9fa;
+    }
+
+    .service-procedure {
+      background: white;
+    }
+
+    .service-faq {
+      background: #f8f9fa;
+    }
+
+    .service-cta {
+      background: var(--primary-color);
+      color: white;
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  ${this.generateServicePageNavigation(servicePage, globalSettings, website)}
+
+  <!-- Service Page Content -->
+  <main>
+    ${componentsHTML}
+  </main>
+
+  <!-- Footer -->
+  ${this.generateFooter(globalSettings, website)}
+
+  <script>
+    // Enhanced functionality for service pages
+    document.addEventListener('DOMContentLoaded', function() {
+      // FAQ toggle functionality
+      const faqItems = document.querySelectorAll('.faq-item');
+      faqItems.forEach(item => {
+        const question = item.querySelector('.faq-question');
+        const answer = item.querySelector('.faq-answer');
+
+        if (question && answer) {
+          question.addEventListener('click', function() {
+            const isOpen = answer.style.display === 'block';
+            answer.style.display = isOpen ? 'none' : 'block';
+            question.classList.toggle('active');
+          });
+        }
+      });
+
+      // Appointment booking tracking
+      const ctaButtons = document.querySelectorAll('.cta-button, .book-appointment');
+      ctaButtons.forEach(button => {
+        button.addEventListener('click', function() {
+          // Track conversion
+          if (window.gtag) {
+            gtag('event', 'appointment_booking_clicked', {
+              service_page: '${servicePage.slug}',
+              service_name: '${servicePage.title}'
+            });
+          }
+        });
+      });
+
+      // Smooth scrolling for anchor links
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+          e.preventDefault();
+          const target = document.querySelector(this.getAttribute('href'));
+          if (target) {
+            target.scrollIntoView({
+              behavior: 'smooth'
+            });
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>`;
+
+    return html;
+  }
+
+  /**
+   * Generate HTML from service page template structure
+   * @param {Object} content - Service page content
+   * @returns {string} HTML content
+   */
+  generateServicePageTemplateHTML(content) {
+    let html = '';
+
+    // Hero section
+    if (content.hero) {
+      html += `
+        <section class="service-hero">
+          <div class="container mx-auto max-w-4xl">
+            <h1 class="text-4xl md:text-5xl font-bold mb-4">${content.hero.title || ''}</h1>
+            ${content.hero.subtitle ? `<p class="text-xl mb-6">${content.hero.subtitle}</p>` : ''}
+            ${content.hero.description ? `<p class="mb-8">${content.hero.description}</p>` : ''}
+            <a href="#contact" class="cta-button bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition">
+              ${content.hero.ctaText || 'Book Appointment'}
+            </a>
+          </div>
+        </section>
+      `;
+    }
+
+    // Overview section
+    if (content.overview) {
+      html += `
+        <section class="service-section">
+          <div class="container mx-auto max-w-4xl px-4">
+            <h2 class="text-3xl font-bold mb-6">${content.overview.title || 'Overview'}</h2>
+            ${content.overview.content ? `<p class="text-lg text-gray-600 mb-6">${content.overview.content}</p>` : ''}
+            ${content.overview.highlights && content.overview.highlights.length > 0 ? `
+              <ul class="list-disc list-inside space-y-2">
+                ${content.overview.highlights.map(highlight => `<li class="text-gray-700">${highlight}</li>`).join('')}
+              </ul>
+            ` : ''}
+          </div>
+        </section>
+      `;
+    }
+
+    // Benefits section
+    if (content.benefits && content.benefits.list && content.benefits.list.length > 0) {
+      html += `
+        <section class="service-section service-benefits">
+          <div class="container mx-auto max-w-6xl px-4">
+            <h2 class="text-3xl font-bold text-center mb-6">${content.benefits.title || 'Benefits'}</h2>
+            ${content.benefits.introduction ? `<p class="text-lg text-gray-600 text-center mb-12">${content.benefits.introduction}</p>` : ''}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              ${content.benefits.list.map(benefit => `
+                <div class="text-center">
+                  <div class="text-4xl mb-4">${benefit.icon || '✅'}</div>
+                  <h3 class="text-xl font-semibold mb-3">${benefit.title}</h3>
+                  <p class="text-gray-600">${benefit.description}</p>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    // Procedure section
+    if (content.procedure && content.procedure.steps && content.procedure.steps.length > 0) {
+      html += `
+        <section class="service-section service-procedure">
+          <div class="container mx-auto max-w-4xl px-4">
+            <h2 class="text-3xl font-bold mb-6">${content.procedure.title || 'The Procedure'}</h2>
+            ${content.procedure.introduction ? `<p class="text-lg text-gray-600 mb-8">${content.procedure.introduction}</p>` : ''}
+            <div class="space-y-6">
+              ${content.procedure.steps.map(step => `
+                <div class="flex items-start space-x-6 p-6 bg-gray-50 rounded-lg">
+                  <div class="flex-shrink-0 w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg">
+                    ${step.stepNumber}
+                  </div>
+                  <div>
+                    <h3 class="text-xl font-semibold mb-2">${step.title}</h3>
+                    <p class="text-gray-600 mb-2">${step.description}</p>
+                    ${step.duration ? `<span class="text-sm text-blue-600 font-medium">Duration: ${step.duration}</span>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            ${content.procedure.additionalInfo ? `<div class="mt-8 p-6 bg-blue-50 rounded-lg"><p class="text-gray-700">${content.procedure.additionalInfo}</p></div>` : ''}
+          </div>
+        </section>
+      `;
+    }
+
+    // FAQ section
+    if (content.faq && content.faq.questions && content.faq.questions.length > 0) {
+      html += `
+        <section class="service-section service-faq">
+          <div class="container mx-auto max-w-4xl px-4">
+            <h2 class="text-3xl font-bold mb-6">${content.faq.title || 'Frequently Asked Questions'}</h2>
+            ${content.faq.introduction ? `<p class="text-lg text-gray-600 mb-8">${content.faq.introduction}</p>` : ''}
+            <div class="space-y-4">
+              ${content.faq.questions.map(faq => `
+                <div class="faq-item border border-gray-200 rounded-lg">
+                  <button class="faq-question w-full text-left p-6 font-semibold hover:bg-gray-50 transition">
+                    ${faq.question}
+                  </button>
+                  <div class="faq-answer hidden p-6 pt-0 text-gray-600">
+                    ${faq.answer}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    // CTA section
+    if (content.cta) {
+      html += `
+        <section class="service-cta" id="contact">
+          <div class="container mx-auto max-w-4xl">
+            <h2 class="text-3xl font-bold mb-4">${content.cta.title || 'Ready to Schedule Your Appointment?'}</h2>
+            ${content.cta.subtitle ? `<p class="text-xl mb-8">${content.cta.subtitle}</p>` : ''}
+            <div class="space-y-4">
+              <a href="tel:${content.cta.phoneNumber || ''}" class="book-appointment bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition mr-4">
+                ${content.cta.buttonText || 'Book Now'}
+              </a>
+              ${content.cta.phoneNumber ? `<p class="text-lg">Call us: <a href="tel:${content.cta.phoneNumber}" class="font-semibold">${content.cta.phoneNumber}</a></p>` : ''}
+              ${content.cta.email ? `<p class="text-lg">Email: <a href="mailto:${content.cta.email}" class="font-semibold">${content.cta.email}</a></p>` : ''}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    return html;
+  }
+
+  /**
+   * Generate HTML from service page components (visual editing mode)
+   * @param {Array} components - Service page components
+   * @param {Object} content - Fallback content
+   * @returns {string} HTML content
+   */
+  generateServicePageComponentsHTML(components, content) {
+    // This would generate HTML from the visual editor components
+    // For now, fall back to template HTML generation
+    return this.generateServicePageTemplateHTML(content);
+  }
+
+  /**
+   * Generate navigation for service pages
+   * @param {Object} servicePage - Service page
+   * @param {Object} globalSettings - Global settings
+   * @param {Object} website - Website object
+   * @returns {string} Navigation HTML
+   */
+  generateServicePageNavigation(servicePage, globalSettings, website) {
+    // Generate navigation with back to home link
+    return `
+    <nav class="nav-primary">
+      <div class="container mx-auto px-4">
+        <div class="flex items-center justify-between h-16">
+          <div class="flex items-center">
+            <a href="/" class="text-xl font-bold">${globalSettings.siteName || website.name}</a>
+          </div>
+          <div class="hidden md:block">
+            <div class="ml-10 flex items-baseline space-x-4">
+              <a href="/" class="nav-link">Home</a>
+              <a href="/services" class="nav-link">Services</a>
+              <a href="/#contact" class="nav-link">Contact</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>`;
+  }
+
+  /**
    * Generate CSS for the website
    * @param {Object} globalSettings - Global website settings
    * @returns {string} CSS content
@@ -443,12 +827,15 @@ ${globalSettings.customCSS || ''}
   /**
    * Generate sitemap.xml
    * @param {Array} pages - Website pages
+   * @param {Array} servicePages - Service pages
    * @param {Object} website - Website object
    * @returns {string} Sitemap XML
    */
-  generateSitemap(pages, website) {
+  generateSitemap(pages, servicePages, website) {
     const baseUrl = website.getPublicUrl();
-    const urls = pages.map(page => {
+
+    // Main website pages
+    const pageUrls = pages.map(page => {
       const url = page.slug === 'home' ? baseUrl : `${baseUrl}/${page.slug}`;
       const lastmod = page.lastModified ? new Date(page.lastModified).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
 
@@ -460,9 +847,24 @@ ${globalSettings.customCSS || ''}
   </url>`;
     }).join('\n');
 
+    // Service pages
+    const serviceUrls = servicePages.map(servicePage => {
+      const url = `${baseUrl}/services/${servicePage.slug}`;
+      const lastmod = servicePage.lastModified ? new Date(servicePage.lastModified).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+      return `  <url>
+    <loc>${url}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+    }).join('\n');
+
+    const allUrls = [pageUrls, serviceUrls].filter(Boolean).join('\n');
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls}
+${allUrls}
 </urlset>`;
   }
 
@@ -571,6 +973,72 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       await fs.rm(siteDir, { recursive: true, force: true });
     } catch (error) {
       console.error('Cleanup error:', error);
+    }
+  }
+
+  /**
+   * Generate a single service page
+   * @param {string} servicePageId - Service page ID
+   * @returns {Object} Generation result
+   */
+  async generateServicePage(servicePageId) {
+    try {
+      const servicePage = await ServicePage.findById(servicePageId)
+        .populate('serviceId')
+        .populate('websiteId');
+
+      if (!servicePage) {
+        throw new Error('Service page not found');
+      }
+
+      const website = servicePage.websiteId;
+      const currentVersion = website.getCurrentVersion();
+
+      if (!currentVersion) {
+        throw new Error('No website version found');
+      }
+
+      // Create services directory
+      const siteDir = path.join(this.outputDir, website.subdomain);
+      const servicesDir = path.join(siteDir, 'services');
+      await this.ensureDir(servicesDir);
+
+      // Generate service page HTML
+      const htmlContent = await this.generateServicePageHTML(servicePage, currentVersion.globalSettings, website);
+      const fileName = `${servicePage.slug}.html`;
+      const filePath = path.join(servicesDir, fileName);
+
+      await fs.writeFile(filePath, htmlContent);
+
+      return {
+        servicePageId,
+        slug: servicePage.slug,
+        title: servicePage.title,
+        filePath,
+        fileName,
+        generatedAt: new Date()
+      };
+    } catch (error) {
+      console.error('Service page generation error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a service page file
+   * @param {string} websiteSubdomain - Website subdomain
+   * @param {string} serviceSlug - Service slug
+   */
+  async deleteServicePage(websiteSubdomain, serviceSlug) {
+    const siteDir = path.join(this.outputDir, websiteSubdomain);
+    const servicesDir = path.join(siteDir, 'services');
+    const filePath = path.join(servicesDir, `${serviceSlug}.html`);
+
+    try {
+      await fs.unlink(filePath);
+    } catch (error) {
+      console.error('Service page deletion error:', error);
+      // Don't throw error if file doesn't exist
     }
   }
 }
