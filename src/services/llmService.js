@@ -309,78 +309,83 @@ class LLMService {
     // Generate realistic mock content based on service data and prompt type
     let content = '';
 
-    // Generate service-specific content based on category
-    const getServiceSpecificTemplate = (serviceName, category, contentType) => {
-      const templates = {
-        'cosmetic-dentistry': {
-          overview: `${serviceName} is an advanced cosmetic dental procedure designed to enhance the beauty and appearance of your smile. Our skilled cosmetic dentists use cutting-edge technology and artistic expertise to create stunning, natural-looking results that boost your confidence and improve your overall appearance.`,
-          benefits: [
-            'Enhanced smile aesthetics and facial harmony',
-            'Improved self-confidence and social interactions',
-            'Long-lasting, natural-looking results',
-            'Minimally invasive cosmetic techniques',
-            'Customized treatment plans for individual needs',
-            'Advanced digital smile design technology'
-          ],
-          procedures: [
-            'Digital smile analysis and treatment planning',
-            'Preparation and impression taking for custom treatments',
-            'Precise application of cosmetic materials',
-            'Color matching and aesthetic adjustments',
-            'Final polishing and quality assessment'
-          ]
-        },
-        'general-dentistry': {
-          overview: `${serviceName} is a fundamental dental treatment that focuses on maintaining and restoring optimal oral health. Our experienced general dentists provide comprehensive care using proven techniques and modern technology to ensure your teeth and gums remain healthy for life.`,
-          benefits: [
-            'Improved overall oral health and hygiene',
-            'Prevention of more serious dental problems',
-            'Enhanced chewing function and comfort',
-            'Professional preventive care and education',
-            'Early detection and treatment of dental issues',
-            'Long-term preservation of natural teeth'
-          ],
-          procedures: [
-            'Comprehensive oral examination and diagnosis',
-            'Professional cleaning and preparation',
-            'Treatment application using modern techniques',
-            'Progress monitoring and adjustments',
-            'Post-treatment care and maintenance planning'
-          ]
-        },
-        'oral-surgery': {
-          overview: `${serviceName} is a specialized surgical procedure performed by our skilled oral surgeons to address complex dental and facial conditions. Using advanced surgical techniques and modern anesthesia methods, we ensure safe, effective treatment with minimal discomfort and optimal healing.`,
-          benefits: [
-            'Resolution of complex oral health issues',
-            'Advanced surgical techniques for optimal outcomes',
-            'Comprehensive pain management protocols',
-            'Faster healing with modern surgical methods',
-            'Experienced oral surgery specialists',
-            'State-of-the-art surgical facilities'
-          ],
-          procedures: [
-            'Pre-surgical consultation and planning',
-            'Anesthesia administration for patient comfort',
-            'Precise surgical intervention',
-            'Immediate post-operative care',
-            'Follow-up monitoring and healing assessment'
-          ]
-        }
-      };
+    // Generate service-specific content based on category using database templates
+    const getServiceSpecificTemplate = async (serviceName, category, contentType, serviceData = {}) => {
+      try {
+        // Import ContentTemplate model
+        const ContentTemplate = require('../models/ContentTemplate');
 
-      const template = templates[category] || templates['general-dentistry'];
-      return template[contentType] || template.overview;
+        // Try to find a matching template from database
+        const templates = await ContentTemplate.findByCategory(category, 'prompt');
+        let template = null;
+
+        if (templates.length > 0) {
+          // Use the most popular template for this category
+          template = templates[0];
+          await template.incrementUsage();
+        }
+
+        if (template && template.template.prompt) {
+          // Use database template with variable substitution
+          const variables = {
+            serviceName,
+            category,
+            contentType,
+            ...serviceData
+          };
+
+          template.validateVariables(variables);
+          const renderedTemplate = template.render(variables);
+
+          if (renderedTemplate.prompt && renderedTemplate.prompt.userPromptTemplate) {
+            return renderedTemplate.prompt.userPromptTemplate;
+          }
+        }
+
+        // Fallback to basic dynamic templates (no hardcoded content)
+        const fallbackTemplates = {
+          overview: `${serviceName} is a professional dental treatment that provides comprehensive care for your oral health. Our experienced dental team uses modern techniques and technology to deliver effective results tailored to your individual needs.`,
+          benefits: [
+            `Improved oral health with ${serviceName} treatment`,
+            'Professional care using advanced techniques',
+            'Personalized treatment approach',
+            'Long-lasting results and enhanced quality of life',
+            'Expert dental care from qualified professionals'
+          ],
+          procedures: [
+            'Initial consultation and examination',
+            'Treatment planning and preparation',
+            `${serviceName} procedure execution`,
+            'Quality assessment and adjustments',
+            'Post-treatment care and follow-up'
+          ]
+        };
+
+        return fallbackTemplates[contentType] || fallbackTemplates.overview;
+
+      } catch (error) {
+        console.warn('Error loading template from database, using fallback:', error);
+
+        // Simple fallback without hardcoded service names
+        const simpleFallback = {
+          overview: `${serviceName} is a dental treatment designed to improve your oral health and provide professional care.`,
+          benefits: [`Professional ${serviceName} treatment`, 'Expert dental care', 'Improved oral health outcomes'],
+          procedures: ['Consultation', 'Treatment planning', 'Procedure execution', 'Follow-up care']
+        };
+
+        return simpleFallback[contentType] || simpleFallback.overview;
+      }
     };
 
     if (prompt.includes('overview') || prompt.includes('comprehensive')) {
-      content = getServiceSpecificTemplate(serviceName, category, 'overview');
+      content = await getServiceSpecificTemplate(serviceName, category, 'overview', variables);
     } else if (prompt.includes('benefits') || prompt.includes('advantages')) {
-      const benefits = getServiceSpecificTemplate(serviceName, category, 'benefits');
+      const benefits = await getServiceSpecificTemplate(serviceName, category, 'benefits', variables);
       content = Array.isArray(benefits)
         ? benefits.map(benefit => `• ${benefit}`).join('\n')
         : `• Improved oral health with ${serviceName} treatment\n• Professional care using advanced techniques\n• Long-lasting results and enhanced quality of life`;
     } else if (prompt.includes('steps') || prompt.includes('procedure')) {
-      const procedures = getServiceSpecificTemplate(serviceName, category, 'procedures');
+      const procedures = await getServiceSpecificTemplate(serviceName, category, 'procedures', variables);
       content = Array.isArray(procedures)
         ? procedures.map((step, index) => `${index + 1}. ${step}`).join('\n')
         : `1. Initial consultation and examination\n2. Treatment planning and preparation\n3. ${serviceName} procedure execution\n4. Quality assessment and adjustments\n5. Post-treatment care and follow-up`;

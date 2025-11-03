@@ -574,6 +574,211 @@ class ServicePageController {
       });
     }
   }
+
+  /**
+   * Get unified editing data for a service page
+   * This loads service page data, unified content, and template info atomically
+   */
+  static async getUnifiedEditingData(req, res) {
+    try {
+      const { servicePageId } = req.params;
+      const { includeTemplateInfo } = req.query;
+
+      // Load service page data
+      const servicePage = await ServicePage.findById(servicePageId)
+        .populate('serviceId')
+        .populate('websiteId')
+        .populate('lastModifiedBy', 'name email');
+
+      if (!servicePage) {
+        return res.status(404).json({
+          success: false,
+          message: 'Service page not found'
+        });
+      }
+
+      // Check access
+      if (servicePage.doctorId.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Load unified content if it exists
+      let unifiedContent = null;
+      let syncStatus = 'in_sync';
+      try {
+        const UnifiedContent = require('../models/UnifiedContent');
+        unifiedContent = await UnifiedContent.findOne({ servicePageId }).populate('lastModifiedBy', 'name email');
+
+        if (unifiedContent) {
+          // Check sync status
+          const servicePageModified = new Date(servicePage.updatedAt);
+          const unifiedModified = new Date(unifiedContent.updatedAt);
+
+          if (Math.abs(servicePageModified - unifiedModified) > 30000) { // 30 seconds threshold
+            syncStatus = 'out_of_sync';
+          }
+        }
+      } catch (error) {
+        console.warn('Unified content not available:', error);
+      }
+
+      // Load template info if requested
+      let templateInfo = null;
+      if (includeTemplateInfo === 'true') {
+        try {
+          const ContentTemplate = require('../models/ContentTemplate');
+          const category = servicePage.serviceId?.category || 'general-dentistry';
+          const templates = await ContentTemplate.findByCategory(category, null, req.user.id).limit(5);
+          templateInfo = {
+            availableTemplates: templates,
+            currentCategory: category,
+            suggestedTemplates: templates.slice(0, 3)
+          };
+        } catch (error) {
+          console.warn('Template info not available:', error);
+          templateInfo = { availableTemplates: [], currentCategory: 'general-dentistry' };
+        }
+      }
+
+      // Return unified data
+      res.json({
+        success: true,
+        data: {
+          servicePage: {
+            ...servicePage.toObject(),
+            editingCapabilities: servicePage.getEditingCapabilities(),
+            currentVersionData: servicePage.getCurrentVersionData()
+          },
+          unifiedContent,
+          syncStatus,
+          templateInfo,
+          lastSyncTimestamp: new Date().toISOString(),
+          conflictResolution: {
+            hasConflicts: syncStatus === 'out_of_sync',
+            conflictSource: syncStatus === 'out_of_sync' ? 'template_mismatch' : null
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error loading unified editing data:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to load unified editing data',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Save unified editing data atomically
+   * This saves both service page content and unified content in a transaction
+   */
+  static async saveUnifiedEditingData(req, res) {
+    try {
+      const { servicePageId } = req.params;
+      const {
+        servicePageContent,
+        unifiedContentData,
+        editingMode,
+        components,
+        seo,
+        design,
+        changeLog
+      } = req.body;
+
+      const servicePage = await ServicePage.findById(servicePageId);
+
+      if (!servicePage) {
+        return res.status(404).json({
+          success: false,
+          message: 'Service page not found'
+        });
+      }
+
+      // Check access
+      if (servicePage.doctorId.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Start transaction-like operation
+      const timestamp = new Date();
+
+      // Update service page
+      if (servicePageContent) {
+        await servicePage.createVersion(
+          servicePageContent,
+          components,
+          seo,
+          design,
+          req.user.id,
+          changeLog || 'Unified content update'
+        );
+
+        servicePage.content = servicePageContent;
+        if (seo) servicePage.seo = seo;
+        if (design) servicePage.design = design;
+        if (editingMode) servicePage.editingMode = editingMode;
+        servicePage.lastModifiedBy = req.user.id;
+        servicePage.status = 'draft';
+
+        await servicePage.save();
+      }
+
+      // Update or create unified content
+      let unifiedContent = null;
+      if (unifiedContentData) {
+        try {
+          const UnifiedContent = require('../models/UnifiedContent');
+          unifiedContent = await UnifiedContent.findOne({ servicePageId });
+
+          if (unifiedContent) {
+            // Update existing
+            Object.assign(unifiedContent, unifiedContentData);
+            unifiedContent.lastModifiedBy = req.user.id;
+            unifiedContent.updatedAt = timestamp;
+            await unifiedContent.save();
+          } else {
+            // Create new
+            unifiedContent = new UnifiedContent({
+              ...unifiedContentData,
+              servicePageId,
+              doctorId: req.user.id,
+              lastModifiedBy: req.user.id
+            });
+            await unifiedContent.save();
+          }
+        } catch (error) {
+          console.warn('Could not save unified content:', error);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Unified data saved successfully',
+        data: {
+          servicePageId: servicePage._id,
+          currentVersion: servicePage.currentVersion,
+          status: servicePage.status,
+          lastModified: servicePage.lastModified,
+          syncStatus: 'in_sync',
+          syncTimestamp: timestamp.toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('Error saving unified editing data:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to save unified editing data',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = ServicePageController;

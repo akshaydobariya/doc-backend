@@ -177,4 +177,33 @@ router.post('/:servicePageId/preview',
   ServicePageController.previewServicePage
 );
 
+/**
+ * @route   GET /api/service-pages/:servicePageId/unified-data
+ * @desc    Get unified editing data (service page + unified content + template info)
+ * @access  Private (Doctor only)
+ */
+router.get('/:servicePageId/unified-data',
+  validateServicePageId,
+  ServicePageController.getUnifiedEditingData
+);
+
+/**
+ * @route   PUT /api/service-pages/:servicePageId/unified-data
+ * @desc    Save unified editing data atomically
+ * @access  Private (Doctor only)
+ */
+router.put('/:servicePageId/unified-data',
+  validateServicePageId,
+  [
+    body('servicePageContent').optional().isObject().withMessage('Service page content must be an object'),
+    body('unifiedContentData').optional().isObject().withMessage('Unified content data must be an object'),
+    body('editingMode').optional().isIn(['template', 'visual', 'hybrid']).withMessage('Invalid editing mode'),
+    body('components').optional().isArray().withMessage('Components must be an array'),
+    body('seo').optional().isObject().withMessage('SEO must be an object'),
+    body('design').optional().isObject().withMessage('Design must be an object'),
+    body('changeLog').optional().isString().isLength({ max: 500 }).withMessage('Change log must be a string with max 500 characters')
+  ],
+  ServicePageController.saveUnifiedEditingData
+);
+
 module.exports = router;

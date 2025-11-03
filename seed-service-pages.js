@@ -180,24 +180,32 @@ const seedServicePages = async () => {
       }
     }
 
-    // Find or create a dental service
-    let dentalService = await DentalService.findOne({ name: 'Laser Dentistry' });
+    // Find or create a dental service using environment variables or defaults
+    const serviceName = process.env.SEED_SERVICE_NAME || 'General Dental Treatment';
+    const serviceCategory = process.env.SEED_SERVICE_CATEGORY || 'general-dentistry';
+    const serviceShortDesc = process.env.SEED_SERVICE_SHORT_DESC || 'Professional dental care for optimal oral health';
+    const serviceFullDesc = process.env.SEED_SERVICE_FULL_DESC || 'Comprehensive dental services designed to maintain and improve your oral health with modern techniques and personalized care.';
+    const serviceBenefits = process.env.SEED_SERVICE_BENEFITS ?
+      process.env.SEED_SERVICE_BENEFITS.split(',').map(b => b.trim()) :
+      [
+        'Comprehensive oral health assessment',
+        'Professional dental care',
+        'Modern treatment techniques',
+        'Personalized treatment plans'
+      ];
+
+    let dentalService = await DentalService.findOne({ name: serviceName });
     if (!dentalService) {
       dentalService = new DentalService({
-        name: 'Laser Dentistry',
-        category: 'cosmetic-dentistry',
-        shortDescription: 'Advanced laser technology for precise dental treatment',
-        fullDescription: 'Experience the future of dental care with our state-of-the-art laser dentistry services. Pain-free, precise, and faster healing.',
+        name: serviceName,
+        category: serviceCategory,
+        shortDescription: serviceShortDesc,
+        fullDescription: serviceFullDesc,
         isActive: true,
-        benefits: [
-          'Gum disease treatment',
-          'Cavity treatment',
-          'Teeth whitening',
-          'Gum reshaping'
-        ]
+        benefits: serviceBenefits
       });
       await dentalService.save();
-      console.log('Created dental service: Laser Dentistry');
+      console.log(`Created dental service: ${serviceName}`);
     }
 
     // Check if service page already exists
