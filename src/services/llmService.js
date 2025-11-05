@@ -21,53 +21,109 @@ class LLMService {
         model: 'deepseek-chat',
         apiKey: process.env.DEEPSEEK_API_KEY,
         enabled: !!process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_API_KEY.startsWith('sk-') && !process.env.DEEPSEEK_API_KEY.includes('1234567890')
-      },
-      'mock': {
-        name: 'Mock Provider (for testing)',
-        model: 'mock-dental-content',
-        apiKey: 'mock',
-        enabled: true // Always enabled as fallback
       }
     };
 
-    // Default provider order (primary to fallback)
-    this.providerOrder = ['google-ai', 'deepseek', 'mock'];
+    // Default provider order (primary to fallback) - ONLY REAL LLM PROVIDERS
+    this.providerOrder = ['google-ai', 'deepseek'];
 
     // Rate limiting and caching
     this.requestCounts = new Map();
     this.cache = new Map();
     this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Dental-specific prompts and templates
+    // Comprehensive dental content prompts based on your detailed requirements
     this.dentalPrompts = {
+      // 1. Introduction - Simple patient terms (100 words)
+      introduction: {
+        system: "You are a professional dental copywriter creating patient-friendly content. Write in simple, reassuring language that patients can easily understand.",
+        user: "Write a brief introduction for {{serviceName}} in simple patient terms. Explain what it is and why patients might need it. Keep it professional but accessible, around 100 words. Target keywords: {{keywords}}."
+      },
+
+      // 2. What does it entail - Detailed explanation (500 words in 5 bullet points)
+      detailedExplanation: {
+        system: "You are a dental educator. Write EXACTLY 5 bullet points only. Be extremely concise.",
+        user: "Explain what {{serviceName}} entails in EXACTLY 5 bullet points. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: procedure, techniques, technology, materials, outcomes. Keep descriptions extremely short and clear. DO NOT exceed character limits."
+      },
+
+      // 3. Why does one need to undergo this treatment (500 words in 5 bullet points)
+      treatmentNeed: {
+        system: "You are a dental expert. Write EXACTLY 5 reasons only. Be extremely concise.",
+        user: "List EXACTLY 5 reasons why patients need {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: health benefits, aesthetics, function, prevention, long-term health. Keep descriptions extremely short and persuasive. DO NOT exceed character limits."
+      },
+
+      // 4. Symptoms requiring this treatment (500 words in 5 bullet points)
+      symptoms: {
+        system: "You are a dental diagnostician. Write EXACTLY 5 symptoms only. Be extremely concise.",
+        user: "List EXACTLY 5 symptoms indicating need for {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: visible signs, pain indicators, functional problems, aesthetic concerns, prevention signs. Keep descriptions extremely short and clear. DO NOT exceed character limits."
+      },
+
+      // 5. Consequences when treatment is not performed (500 words in 5 bullet points)
+      consequences: {
+        system: "You are a dental health educator. Write EXACTLY 5 consequences only. Be extremely concise.",
+        user: "List EXACTLY 5 consequences of delaying {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: problem progression, pain increase, functional loss, aesthetic damage, health impact. Keep descriptions extremely short and serious. DO NOT exceed character limits."
+      },
+
+      // 6. Treatment procedure in 5 steps (500 words)
+      procedureSteps: {
+        system: "You are a dental educator. Write EXACTLY 5 steps only. Be extremely concise.",
+        user: "Outline {{serviceName}} in EXACTLY 5 steps. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 350 characters (about 50-60 words maximum)\n\nUse format: 1. Step Title: Description\nEmphasize comfort, safety, modern techniques. Keep descriptions extremely short and reassuring. DO NOT exceed character limits."
+      },
+
+      // 7. Post-treatment care (500 words in 5 bullet points)
+      postTreatmentCare: {
+        system: "You are a dental hygienist. Write EXACTLY 5 care instructions only. Be extremely concise.",
+        user: "List EXACTLY 5 post-treatment care instructions for {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: immediate care, short-term care, diet restrictions, oral hygiene, long-term maintenance. Keep descriptions extremely short and actionable. DO NOT exceed character limits."
+      },
+
+      // 8. Benefits of this procedure (500 words in 5 bullet points)
+      procedureBenefits: {
+        system: "You are a dental marketing expert writing benefit-focused content. Write EXACTLY 5 benefits only. Be extremely concise.",
+        user: "List EXACTLY 5 key benefits of {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters (very short titles)\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nWrite exactly 5 benefits covering: health, aesthetics, function, comfort, and value. Keep descriptions extremely short and impactful. DO NOT exceed character limits."
+      },
+
+      // 9. Side effects (500 words in 5 bullet points)
+      sideEffects: {
+        system: "You are a dental professional providing honest, balanced information. Write EXACTLY 5 side effects only. Be extremely concise.",
+        user: "List EXACTLY 5 potential side effects of {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: common effects, rare complications, normal responses, when to call doctor, and prevention. Keep descriptions extremely short and clear. DO NOT exceed character limits."
+      },
+
+      // 10. Myths and facts (500 words - 5 myths and facts)
+      mythsAndFacts: {
+        system: "You are a dental expert debunking common misconceptions about dental treatments while providing accurate, evidence-based information.",
+        user: "Present 5 common myths and facts about {{serviceName}}. Write exactly 500 words total (50 words per myth, 50 words per fact). Use this format:\nMyth 1: [Common misconception]\nFact 1: [Accurate information]\nAddress common patient concerns and misconceptions with evidence-based facts."
+      },
+
+      // 11. FAQs (25 FAQ with 100-word answers)
+      comprehensiveFAQ: {
+        system: "You are a dental practice manager. Write EXACTLY 25 FAQs only. Be extremely concise.",
+        user: "Generate EXACTLY 25 FAQs about {{serviceName}}. CRITICAL LIMITS:\nQ: [Question - Maximum 120 characters - very brief]\nA: [Answer - Maximum 600 characters - about 80-90 words maximum]\n\nCover: procedure, cost, pain, recovery, candidacy, risks, alternatives, results, maintenance. Keep questions extremely short and answers very concise. DO NOT exceed character limits."
+      },
+
+      // Legacy prompts for backward compatibility
       serviceOverview: {
-        system: "You are a professional dental copywriter creating patient-friendly, SEO-optimized content for dental practice websites. Your writing should be informative, reassuring, and encourage patients to book appointments.",
+        system: "You are a professional dental copywriter creating patient-friendly, SEO-optimized content for dental practice websites.",
         user: "Write a comprehensive overview for {{serviceName}} dental service. Include: what it is, who needs it, why it's important for oral health. Target keywords: {{keywords}}. Keep it professional but accessible, around 150-200 words."
       },
 
       serviceBenefits: {
-        system: "You are a dental marketing expert writing benefit-focused content that converts visitors into patients. Focus on patient outcomes and quality of life improvements.",
-        user: "List 5-7 key benefits of {{serviceName}} for patients. Use this EXACT format:\n• Title (4-6 words): Description (20-30 words)\n• Title (4-6 words): Description (20-30 words)\nFocus on: improved health, aesthetics, comfort, long-term value, and patient experience."
-      },
-
-      procedureSteps: {
-        system: "You are a dental educator explaining procedures in simple, non-intimidating language that reduces patient anxiety while building confidence in the practice.",
-        user: "Outline the step-by-step process for {{serviceName}}. Use this EXACT format:\n1. Step Title (3-8 words): Brief description (15-25 words)\n2. Step Title (3-8 words): Brief description (15-25 words)\nInclude 4-6 main steps. Emphasize comfort, safety, and professionalism. Avoid medical jargon."
+        system: "You are a dental marketing expert writing benefit-focused content that converts visitors into patients.",
+        user: "List 5-7 key benefits of {{serviceName}} for patients. Focus on: improved health, aesthetics, comfort, long-term value, and patient experience."
       },
 
       faqGeneration: {
-        system: "You are a dental practice manager who answers the most common patient questions with empathy, clarity, and expertise. Anticipate patient concerns and provide reassuring, informative answers.",
-        user: "Generate 6-8 frequently asked questions and answers about {{serviceName}}. Cover: cost concerns, pain/discomfort, recovery time, candidacy, insurance, and effectiveness. Keep answers concise but thorough."
+        system: "You are a dental practice manager who answers the most common patient questions with empathy, clarity, and expertise.",
+        user: "Generate 6-8 frequently asked questions and answers about {{serviceName}}. Cover: cost concerns, pain/discomfort, recovery time, candidacy, insurance, and effectiveness."
       },
 
       aftercareInstructions: {
-        system: "You are a dental hygienist providing clear, actionable aftercare instructions that promote healing and prevent complications. Be specific and organized.",
-        user: "Create aftercare instructions for {{serviceName}}. Use this EXACT format:\n• Instruction (5-12 words): Detailed explanation (20-30 words)\n• Instruction (5-12 words): Detailed explanation (20-30 words)\nInclude immediate care (first 24 hours), short-term care (1-7 days), and long-term maintenance."
+        system: "You are a dental hygienist providing clear, actionable aftercare instructions that promote healing and prevent complications.",
+        user: "Create aftercare instructions for {{serviceName}}. Include immediate care (first 24 hours), short-term care (1-7 days), and long-term maintenance."
       },
 
       seoContent: {
-        system: "You are an SEO specialist creating dental content that ranks well while serving patients. Balance keyword optimization with natural, helpful content.",
-        user: "Generate SEO metadata for {{serviceName}} page: 1) Meta title (50-60 chars), 2) Meta description (150-160 chars), 3) 5-8 related keywords. Focus on location + service combinations and patient intent keywords."
+        system: "You are an SEO specialist creating dental content that ranks well while serving patients.",
+        user: "Generate SEO metadata for {{serviceName}} page: 1) Meta title (50-60 chars), 2) Meta description (150-160 chars), 3) 5-8 related keywords."
       }
     };
   }
@@ -171,10 +227,8 @@ class LLMService {
         return await this.callGoogleAI(prompt, options);
       case 'deepseek':
         return await this.callDeepSeek(prompt, options);
-      case 'mock':
-        return await this.callMockProvider(prompt, options);
       default:
-        throw new Error(`Unsupported provider: ${providerKey}`);
+        throw new Error(`Unsupported provider: ${providerKey}. Only 'google-ai' and 'deepseek' are supported.`);
     }
   }
 
@@ -298,170 +352,6 @@ class LLMService {
     }
   }
 
-  /**
-   * Call Mock Provider (for testing when real APIs are not available)
-   */
-  async callMockProvider(prompt, options = {}) {
-    const { variables = {} } = options;
-    const serviceName = variables.serviceName || 'Dental Service';
-    const category = variables.category || 'general-dentistry';
-
-    // Generate realistic mock content based on service data and prompt type
-    let content = '';
-
-    // Generate service-specific content based on category using database templates
-    const getServiceSpecificTemplate = async (serviceName, category, contentType, serviceData = {}) => {
-      try {
-        // Import ContentTemplate model
-        const ContentTemplate = require('../models/ContentTemplate');
-
-        // Try to find a matching template from database
-        const templates = await ContentTemplate.findByCategory(category, 'prompt');
-        let template = null;
-
-        if (templates.length > 0) {
-          // Use the most popular template for this category
-          template = templates[0];
-          await template.incrementUsage();
-        }
-
-        if (template && template.template.prompt) {
-          // Use database template with variable substitution
-          const variables = {
-            serviceName,
-            category,
-            contentType,
-            ...serviceData
-          };
-
-          template.validateVariables(variables);
-          const renderedTemplate = template.render(variables);
-
-          if (renderedTemplate.prompt && renderedTemplate.prompt.userPromptTemplate) {
-            return renderedTemplate.prompt.userPromptTemplate;
-          }
-        }
-
-        // Fallback to basic dynamic templates (no hardcoded content)
-        const fallbackTemplates = {
-          overview: `${serviceName} is a professional dental treatment that provides comprehensive care for your oral health. Our experienced dental team uses modern techniques and technology to deliver effective results tailored to your individual needs.`,
-          benefits: [
-            `Improved oral health with ${serviceName} treatment`,
-            'Professional care using advanced techniques',
-            'Personalized treatment approach',
-            'Long-lasting results and enhanced quality of life',
-            'Expert dental care from qualified professionals'
-          ],
-          procedures: [
-            'Initial consultation and examination',
-            'Treatment planning and preparation',
-            `${serviceName} procedure execution`,
-            'Quality assessment and adjustments',
-            'Post-treatment care and follow-up'
-          ]
-        };
-
-        return fallbackTemplates[contentType] || fallbackTemplates.overview;
-
-      } catch (error) {
-        console.warn('Error loading template from database, using fallback:', error);
-
-        // Simple fallback without hardcoded service names
-        const simpleFallback = {
-          overview: `${serviceName} is a dental treatment designed to improve your oral health and provide professional care.`,
-          benefits: [`Professional ${serviceName} treatment`, 'Expert dental care', 'Improved oral health outcomes'],
-          procedures: ['Consultation', 'Treatment planning', 'Procedure execution', 'Follow-up care']
-        };
-
-        return simpleFallback[contentType] || simpleFallback.overview;
-      }
-    };
-
-    if (prompt.includes('overview') || prompt.includes('comprehensive')) {
-      content = await getServiceSpecificTemplate(serviceName, category, 'overview', variables);
-    } else if (prompt.includes('benefits') || prompt.includes('advantages')) {
-      const benefits = await getServiceSpecificTemplate(serviceName, category, 'benefits', variables);
-      content = Array.isArray(benefits)
-        ? benefits.map(benefit => `• ${benefit}`).join('\n')
-        : `• Improved oral health with ${serviceName} treatment\n• Professional care using advanced techniques\n• Long-lasting results and enhanced quality of life`;
-    } else if (prompt.includes('steps') || prompt.includes('procedure')) {
-      const procedures = await getServiceSpecificTemplate(serviceName, category, 'procedures', variables);
-      content = Array.isArray(procedures)
-        ? procedures.map((step, index) => `${index + 1}. ${step}`).join('\n')
-        : `1. Initial consultation and examination\n2. Treatment planning and preparation\n3. ${serviceName} procedure execution\n4. Quality assessment and adjustments\n5. Post-treatment care and follow-up`;
-    } else if (prompt.includes('FAQ') || prompt.includes('questions')) {
-      const categoryFAQs = {
-        'cosmetic-dentistry': [
-          { q: `How long does ${serviceName} take?`, a: 'Most cosmetic procedures are completed in 1-3 visits, depending on complexity.' },
-          { q: 'Will the results look natural?', a: 'Yes, we use advanced techniques to ensure natural-looking, beautiful results.' },
-          { q: 'How long do the results last?', a: 'With proper care, cosmetic dental work can last 10-15 years or more.' },
-          { q: 'Is the procedure painful?', a: 'We use effective pain management to ensure your comfort throughout treatment.' }
-        ],
-        'general-dentistry': [
-          { q: `How often do I need ${serviceName}?`, a: 'Regular treatments are typically recommended every 6 months for optimal oral health.' },
-          { q: 'Is the treatment covered by insurance?', a: 'Most general dental treatments are covered by dental insurance plans.' },
-          { q: 'What should I expect during treatment?', a: 'We will explain each step and ensure your comfort throughout the procedure.' },
-          { q: 'How can I maintain results?', a: 'Good oral hygiene and regular dental visits are key to maintaining results.' }
-        ],
-        'oral-surgery': [
-          { q: `How long is recovery after ${serviceName}?`, a: 'Recovery varies but most patients return to normal activities within 3-7 days.' },
-          { q: 'Will I need pain medication?', a: 'We provide comprehensive pain management including prescription medications as needed.' },
-          { q: 'What are the risks?', a: 'We discuss all risks and benefits during consultation. Complications are rare with proper care.' },
-          { q: 'When can I eat normally?', a: 'Dietary restrictions are temporary, usually lasting 24-48 hours post-surgery.' }
-        ]
-      };
-
-      const faqs = categoryFAQs[category] || categoryFAQs['general-dentistry'];
-      content = faqs.map(faq => `Q: ${faq.q}\nA: ${faq.a}`).join('\n\n');
-    } else if (prompt.includes('aftercare') || prompt.includes('recovery')) {
-      const categoryAftercare = {
-        'cosmetic-dentistry': [
-          'First 24 Hours: Avoid staining foods and beverages',
-          'First Week: Use soft-bristled toothbrush and gentle brushing',
-          'Ongoing: Maintain excellent oral hygiene to preserve results',
-          'Long-term: Regular dental cleanings and checkups every 6 months'
-        ],
-        'general-dentistry': [
-          'Follow prescribed oral hygiene routine',
-          'Take any prescribed medications as directed',
-          'Avoid hard or sticky foods for 24 hours',
-          'Schedule follow-up appointment as recommended'
-        ],
-        'oral-surgery': [
-          'First 24 Hours: Apply ice packs and rest',
-          'Days 1-3: Take prescribed pain medication and antibiotics',
-          'Week 1: Soft food diet and gentle oral care',
-          'Follow-up: Attend all scheduled post-operative appointments'
-        ]
-      };
-
-      const aftercare = categoryAftercare[category] || categoryAftercare['general-dentistry'];
-      content = aftercare.map((instruction, index) => `• ${instruction}`).join('\n');
-    } else if (prompt.includes('SEO') || prompt.includes('meta')) {
-      const categoryKeywords = {
-        'cosmetic-dentistry': ['cosmetic dentist', 'smile makeover', 'aesthetic dentistry', 'beautiful smile'],
-        'general-dentistry': ['general dentist', 'dental care', 'oral health', 'preventive dentistry'],
-        'oral-surgery': ['oral surgeon', 'dental surgery', 'surgical dentistry', 'oral maxillofacial']
-      };
-
-      const keywords = categoryKeywords[category] || categoryKeywords['general-dentistry'];
-      content = `Meta Title: ${serviceName} | Expert Dental Care | [Practice Name]
-Meta Description: Professional ${serviceName} services with advanced technology and experienced dentists. Schedule your consultation today for optimal oral health.
-Keywords: ${serviceName.toLowerCase()}, ${keywords.join(', ')}, dental treatment, oral health`;
-    } else {
-      // Generic content based on service data
-      content = getServiceSpecificTemplate(serviceName, category, 'overview');
-    }
-
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    return {
-      content: content.trim(),
-      tokensUsed: this.estimateTokens(content),
-      model: 'mock-dental-content'
-    };
-  }
 
   /**
    * Generate dental service content using predefined prompts
@@ -471,6 +361,10 @@ Keywords: ${serviceName.toLowerCase()}, ${keywords.join(', ')}, dental treatment
       keywords = [],
       category = 'general-dentistry',
       customPrompt = null,
+      websiteId = null,
+      websiteName = null,
+      doctorName = null,
+      practiceLocation = null,
       ...generateOptions
     } = options;
 
@@ -479,17 +373,34 @@ Keywords: ${serviceName.toLowerCase()}, ${keywords.join(', ')}, dental treatment
     }
 
     const promptTemplate = customPrompt || this.dentalPrompts[contentType];
+
+    // Enhanced variables with website context for unique content generation
     const variables = {
       serviceName,
       keywords: keywords.join(', '),
       category,
+      websiteName: websiteName || 'Professional Dental Practice',
+      doctorName: doctorName || 'Our Expert Team',
+      practiceLocation: practiceLocation || 'our clinic',
       ...options.variables
     };
 
-    // Combine system and user prompts
-    const fullPrompt = `${promptTemplate.system}\n\n${promptTemplate.user}`;
+    // Combine system and user prompts with website-specific context
+    let fullPrompt = `${promptTemplate.system}\n\n${promptTemplate.user}`;
 
-    const cacheKey = `dental_${contentType}_${serviceName}_${JSON.stringify(variables)}`;
+    // Add website-specific customization to the prompt for unique content
+    if (websiteId || websiteName) {
+      const websiteContext = `\n\nIMPORTANT: Generate unique content specifically for "${variables.websiteName}" practice. ` +
+                             `Mention "${variables.doctorName}" and customize the content to reflect this specific dental practice's expertise. ` +
+                             `Make the content unique and personalized for this practice, not generic. ` +
+                             `Reference "${variables.practiceLocation}" when appropriate.`;
+      fullPrompt += websiteContext;
+    }
+
+    // FIXED: Include website context in cache key for unique content per website
+    const cacheKey = websiteId
+      ? `dental_${contentType}_${serviceName}_${websiteId}_${JSON.stringify(variables)}`
+      : `dental_${contentType}_${serviceName}_generic_${JSON.stringify(variables)}`;
 
     return await this.generateContent(fullPrompt, {
       ...generateOptions,
@@ -499,7 +410,102 @@ Keywords: ${serviceName.toLowerCase()}, ${keywords.join(', ')}, dental treatment
   }
 
   /**
-   * Generate complete service page content
+   * Generate comprehensive dental service content based on detailed requirements
+   */
+  async generateComprehensiveDentalContent(serviceData, options = {}) {
+    const { serviceName, category, keywords = [] } = serviceData;
+    const results = {};
+
+    try {
+      // All 11 comprehensive content sections as per requirements
+      const comprehensiveSections = [
+        'introduction',           // 1. Introduction (100 words)
+        'detailedExplanation',    // 2. What does it entail (500 words, 5 bullet points)
+        'treatmentNeed',          // 3. Why undergo treatment (500 words, 5 bullet points)
+        'symptoms',               // 4. Symptoms requiring treatment (500 words, 5 bullet points)
+        'consequences',           // 5. Consequences if not performed (500 words, 5 bullet points)
+        'procedureSteps',         // 6. Procedure steps (500 words, 5 steps)
+        'postTreatmentCare',      // 7. Post-treatment care (500 words, 5 bullet points)
+        'procedureBenefits',      // 8. Benefits (500 words, 5 bullet points)
+        'sideEffects',           // 9. Side effects (500 words, 5 bullet points)
+        'mythsAndFacts',         // 10. Myths and facts (500 words, 5 myths/facts)
+        'comprehensiveFAQ'       // 11. FAQs (25 questions with 100-word answers)
+      ];
+
+      console.log(`Generating comprehensive content for ${serviceName} with ${comprehensiveSections.length} sections`);
+
+      // Generate sections in smaller batches to avoid rate limits
+      const batchSize = 3;
+      const batches = [];
+      for (let i = 0; i < comprehensiveSections.length; i += batchSize) {
+        batches.push(comprehensiveSections.slice(i, i + batchSize));
+      }
+
+      for (const [batchIndex, batch] of batches.entries()) {
+        console.log(`Processing batch ${batchIndex + 1}/${batches.length} for ${serviceName}`);
+
+        const batchPromises = batch.map(async (section) => {
+          try {
+            const result = await this.generateDentalServiceContent(serviceName, section, {
+              keywords,
+              category,
+              maxTokens: section === 'comprehensiveFAQ' ? 3000 : 800, // More tokens for comprehensive FAQ
+              temperature: 0.7,
+              ...options
+            });
+            console.log(`✓ Generated ${section} for ${serviceName}`);
+            return { section, result };
+          } catch (error) {
+            console.error(`✗ Failed to generate ${section} for ${serviceName}:`, error.message);
+            return { section, error: error.message };
+          }
+        });
+
+        const batchResults = await Promise.allSettled(batchPromises);
+
+        // Process batch results
+        batchResults.forEach((promiseResult) => {
+          if (promiseResult.status === 'fulfilled') {
+            const { section, result, error } = promiseResult.value;
+            if (result) {
+              results[section] = result;
+            } else if (error) {
+              results[section] = { error };
+            }
+          }
+        });
+
+        // Add delay between batches to respect rate limits
+        if (batchIndex < batches.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      const totalTokensUsed = Object.values(results).reduce((sum, r) => sum + (r.tokensUsed || 0), 0);
+      const successfulSections = Object.keys(results).filter(key => !results[key].error).length;
+
+      console.log(`Comprehensive content generation completed for ${serviceName}: ${successfulSections}/${comprehensiveSections.length} sections successful, ${totalTokensUsed} tokens used`);
+
+      return {
+        success: true,
+        content: results,
+        generatedAt: new Date(),
+        serviceName,
+        category,
+        keywords,
+        sectionsGenerated: successfulSections,
+        totalSections: comprehensiveSections.length,
+        totalTokensUsed,
+        comprehensive: true
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to generate comprehensive dental content: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate complete service page content (legacy method for backward compatibility)
    */
   async generateServicePageContent(serviceData, options = {}) {
     const { serviceName, category, keywords = [] } = serviceData;

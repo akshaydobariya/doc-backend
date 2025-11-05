@@ -337,6 +337,274 @@ const servicePageSchema = new mongoose.Schema({
       }
     },
 
+    // Comprehensive content sections for detailed dental service information
+    comprehensiveContent: {
+      // 1. Introduction (100 words in simple patient terms)
+      introduction: {
+        content: {
+          type: String,
+          maxlength: 1000
+        },
+        wordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 2. What does it entail - Detailed explanation (500 words in 5 bullet points)
+      detailedExplanation: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'What Does This Treatment Entail?'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 3. Why does one need to undergo this treatment (500 words in 5 bullet points)
+      treatmentNeed: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Why Do You Need This Treatment?'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 4. Symptoms for which this treatment is required (500 words in 5 bullet points)
+      symptoms: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Signs You May Need This Treatment'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 5. Consequences when this treatment is not performed (500 words in 5 bullet points)
+      consequences: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'What Happens If Treatment Is Delayed?'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 6. What is the procedure for this treatment - 5 steps (500 words)
+      procedureDetails: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Step-by-Step Procedure'
+        },
+        steps: [{
+          stepNumber: {
+            type: Number,
+            required: true
+          },
+          title: {
+            type: String,
+            maxlength: 150,
+            required: true
+          },
+          description: {
+            type: String,
+            maxlength: 800,
+            required: true
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 7. Post-treatment care (500 words in 5 bullet points)
+      postTreatmentCare: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Post-Treatment Care Instructions'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 8. Benefits of this procedure (500 words in 5 bullet points)
+      detailedBenefits: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Benefits of This Treatment'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 9. Side effects (500 words in 5 bullet points)
+      sideEffects: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Potential Side Effects'
+        },
+        bulletPoints: [{
+          title: {
+            type: String,
+            maxlength: 150
+          },
+          content: {
+            type: String,
+            maxlength: 800
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 10. Myths and facts (500 words - 5 myths and facts)
+      mythsAndFacts: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Common Myths and Facts'
+        },
+        items: [{
+          myth: {
+            type: String,
+            maxlength: 500,
+            required: true
+          },
+          fact: {
+            type: String,
+            maxlength: 500,
+            required: true
+          }
+        }],
+        totalWordCount: {
+          type: Number,
+          default: 0
+        }
+      },
+
+      // 11. Comprehensive FAQs (25 FAQs with 100-word answers)
+      comprehensiveFAQ: {
+        title: {
+          type: String,
+          maxlength: 200,
+          default: 'Comprehensive FAQ'
+        },
+        questions: [{
+          question: {
+            type: String,
+            required: true,
+            maxlength: 300
+          },
+          answer: {
+            type: String,
+            required: true,
+            maxlength: 1000
+          },
+          category: {
+            type: String,
+            enum: ['procedure', 'cost', 'pain', 'recovery', 'candidacy', 'risks', 'alternatives', 'results', 'maintenance', 'general'],
+            default: 'general'
+          },
+          order: {
+            type: Number,
+            default: 0
+          },
+          wordCount: {
+            type: Number,
+            default: 0
+          }
+        }],
+        totalQuestions: {
+          type: Number,
+          default: 0
+        }
+      }
+    },
+
     // Custom sections for additional content
     customSections: [{
       id: {
@@ -663,6 +931,24 @@ servicePageSchema.statics.findBySlug = function(slug, websiteId) {
     .populate('websiteId');
 };
 
+// Helper method to clean content formatting
+servicePageSchema.methods.cleanContent = function(content) {
+  if (!content || typeof content !== 'string') return '';
+
+  return content
+    .replace(/\*\*Answer:\*\*\s*/gi, '') // Remove "**Answer:**" patterns
+    .replace(/\*\*Question:\*\*\s*/gi, '') // Remove "**Question:**" patterns
+    .replace(/\*\*/g, '') // Remove markdown bold markers
+    .replace(/\*/g, '') // Remove markdown italic markers
+    .replace(/#{1,6}\s*/g, '') // Remove markdown headers
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace markdown links with text
+    .replace(/`([^`]+)`/g, '$1') // Remove code blocks
+    .replace(/Answer:\s*/gi, '') // Remove "Answer:" prefixes
+    .replace(/Question:\s*/gi, '') // Remove "Question:" prefixes
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+};
+
 // Method to increment view count
 servicePageSchema.methods.incrementView = function(isUnique = false) {
   this.analytics.views += 1;
@@ -826,6 +1112,398 @@ servicePageSchema.methods.getEditingCapabilities = function() {
   };
 
   return capabilities[this.editingMode] || capabilities.template;
+};
+
+// Method to parse and store comprehensive content generated by LLM
+servicePageSchema.methods.parseAndStoreComprehensiveContent = function(generatedContent) {
+  try {
+    const comprehensiveContent = {};
+
+    // Parse each section of generated content
+    const sectionMappings = {
+      introduction: 'introduction',
+      detailedExplanation: 'detailedExplanation',
+      treatmentNeed: 'treatmentNeed',
+      symptoms: 'symptoms',
+      consequences: 'consequences',
+      procedureSteps: 'procedureDetails',
+      postTreatmentCare: 'postTreatmentCare',
+      procedureBenefits: 'detailedBenefits',
+      sideEffects: 'sideEffects',
+      mythsAndFacts: 'mythsAndFacts',
+      comprehensiveFAQ: 'comprehensiveFAQ'
+    };
+
+    Object.keys(sectionMappings).forEach(generatedKey => {
+      const modelKey = sectionMappings[generatedKey];
+      const generatedData = generatedContent[generatedKey];
+
+      if (generatedData && generatedData.content) {
+        const content = generatedData.content;
+
+        switch (generatedKey) {
+          case 'introduction':
+            comprehensiveContent.introduction = {
+              content: content,
+              wordCount: this.countWords(content)
+            };
+            break;
+
+          case 'detailedExplanation':
+          case 'treatmentNeed':
+          case 'symptoms':
+          case 'consequences':
+          case 'postTreatmentCare':
+          case 'procedureBenefits':
+          case 'sideEffects':
+            const bulletPoints = this.parseBulletPoints(content);
+            comprehensiveContent[modelKey] = {
+              title: this.getDefaultTitle(modelKey),
+              bulletPoints: bulletPoints,
+              totalWordCount: this.countWords(content)
+            };
+            break;
+
+          case 'procedureSteps':
+            const steps = this.parseSteps(content);
+            comprehensiveContent.procedureDetails = {
+              title: 'Step-by-Step Procedure',
+              steps: steps,
+              totalWordCount: this.countWords(content)
+            };
+            break;
+
+          case 'mythsAndFacts':
+            const mythsAndFacts = this.parseMythsAndFacts(content);
+            comprehensiveContent.mythsAndFacts = {
+              title: 'Common Myths and Facts',
+              items: mythsAndFacts,
+              totalWordCount: this.countWords(content)
+            };
+            break;
+
+          case 'comprehensiveFAQ':
+            const faqs = this.parseFAQs(content);
+            comprehensiveContent.comprehensiveFAQ = {
+              title: 'Comprehensive FAQ',
+              questions: faqs,
+              totalQuestions: faqs.length
+            };
+            break;
+        }
+      }
+    });
+
+    // Update the model with parsed content
+    this.content.comprehensiveContent = comprehensiveContent;
+
+    // Mark as comprehensive content generated
+    this.generation.lastGenerated = new Date();
+    this.generation.generatedBy = generatedContent.provider || 'llm';
+
+    return comprehensiveContent;
+  } catch (error) {
+    throw new Error(`Failed to parse comprehensive content: ${error.message}`);
+  }
+};
+
+// Helper method to count words
+servicePageSchema.methods.countWords = function(text) {
+  if (!text) return 0;
+  return text.trim().split(/\s+/).length;
+};
+
+// Helper method to get default titles
+servicePageSchema.methods.getDefaultTitle = function(section) {
+  const titles = {
+    detailedExplanation: 'What Does This Treatment Entail?',
+    treatmentNeed: 'Why Do You Need This Treatment?',
+    symptoms: 'Signs You May Need This Treatment',
+    consequences: 'What Happens If Treatment Is Delayed?',
+    postTreatmentCare: 'Post-Treatment Care Instructions',
+    detailedBenefits: 'Benefits of This Treatment',
+    sideEffects: 'Potential Side Effects'
+  };
+  return titles[section] || 'Information';
+};
+
+// Helper method to parse bullet points from LLM content
+servicePageSchema.methods.parseBulletPoints = function(content) {
+  const bulletPoints = [];
+
+  try {
+    // Split content by bullet points or numbered lists
+    const lines = content.split(/[\n\r]+/);
+    let currentPoint = null;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      // Check if line starts with bullet point or number
+      if (trimmedLine.match(/^[•\-\*]\s+/) || trimmedLine.match(/^\d+\.\s+/)) {
+        // Save previous point if exists
+        if (currentPoint) {
+          bulletPoints.push(currentPoint);
+        }
+
+        // Start new point
+        const titleMatch = trimmedLine.match(/^[•\-\*\d\.\s]*(.+?):\s*(.*)/) ||
+                          trimmedLine.match(/^[•\-\*\d\.\s]*(.{1,150}?)\s*-\s*(.*)/) ||
+                          trimmedLine.match(/^[•\-\*\d\.\s]*(.+)/);
+
+        if (titleMatch) {
+          currentPoint = {
+            title: this.cleanContent(titleMatch[1] || titleMatch[0]).substring(0, 60), // Super aggressive: 60 for 100 limit
+            content: this.cleanContent(titleMatch[2] || '').substring(0, 200) // Super aggressive: 200 for 300 limit
+          };
+        }
+      } else if (currentPoint && trimmedLine) {
+        // Add to current point content with super aggressive limit
+        const additionalContent = (currentPoint.content ? ' ' : '') + this.cleanContent(trimmedLine);
+        if (currentPoint.content.length + additionalContent.length <= 200) { // Super aggressive: 200 for 300 limit
+          currentPoint.content += additionalContent;
+        }
+      }
+    }
+
+    // Add last point
+    if (currentPoint) {
+      bulletPoints.push(currentPoint);
+    }
+
+    // Ensure we have exactly 5 bullet points by splitting or combining if needed
+    while (bulletPoints.length < 5 && bulletPoints.length > 0) {
+      const longestPoint = bulletPoints.reduce((longest, current) =>
+        current.content.length > longest.content.length ? current : longest
+      );
+
+      const splitIndex = bulletPoints.indexOf(longestPoint);
+      const splitContent = longestPoint.content;
+      const midPoint = Math.floor(splitContent.length / 2);
+      const splitAt = splitContent.indexOf(' ', midPoint);
+
+      if (splitAt > 0) {
+        bulletPoints[splitIndex] = {
+          title: longestPoint.title + ' (Part 1)',
+          content: splitContent.substring(0, splitAt).trim()
+        };
+        bulletPoints.splice(splitIndex + 1, 0, {
+          title: longestPoint.title + ' (Part 2)',
+          content: splitContent.substring(splitAt).trim()
+        });
+      } else {
+        break;
+      }
+    }
+
+    // Ensure exactly 5 points and force truncation for safety
+    const finalPoints = bulletPoints.slice(0, 5).map(point => ({
+      title: this.cleanContent(point.title || '').substring(0, 60), // Force 60 chars max
+      content: this.cleanContent(point.content || '').substring(0, 200) // Force 200 chars max
+    }));
+
+    // Fill to exactly 5 if needed
+    while (finalPoints.length < 5) {
+      finalPoints.push({
+        title: `Benefit ${finalPoints.length + 1}`,
+        content: 'Additional benefit information available during consultation.'
+      });
+    }
+
+    return finalPoints;
+  } catch (error) {
+    console.error('Error parsing bullet points:', error);
+    return Array(5).fill().map((_, i) => ({
+      title: `Benefit ${i + 1}`,
+      content: 'Content available during consultation.'
+    }));
+  }
+};
+
+// Helper method to parse procedure steps
+servicePageSchema.methods.parseSteps = function(content) {
+  const steps = [];
+
+  try {
+    const lines = content.split(/[\n\r]+/);
+    let stepNumber = 1;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      // Look for numbered steps
+      const stepMatch = trimmedLine.match(/^(\d+)\.\s*(.+?):\s*(.*)/) ||
+                       trimmedLine.match(/^Step\s*(\d+)[:\-\s]*(.+?):\s*(.*)/) ||
+                       trimmedLine.match(/^(\d+)\.\s*(.+)/);
+
+      if (stepMatch) {
+        const title = stepMatch[2] || `Step ${stepNumber}`;
+        const description = stepMatch[3] || stepMatch[2] || stepMatch[0];
+
+        steps.push({
+          stepNumber: parseInt(stepMatch[1]) || stepNumber,
+          title: this.cleanContent(title).substring(0, 150),
+          description: this.cleanContent(description).substring(0, 500) // Schema limit is 500
+        });
+
+        stepNumber++;
+      }
+    }
+
+    // Ensure we have exactly 5 steps
+    while (steps.length < 5) {
+      steps.push({
+        stepNumber: steps.length + 1,
+        title: `Additional Step ${steps.length + 1}`,
+        description: 'Details will be provided during consultation.'
+      });
+    }
+
+    // Force truncation for safety - ensure exactly 5 steps with safe limits
+    const finalSteps = steps.slice(0, 5).map(step => ({
+      stepNumber: step.stepNumber,
+      title: this.cleanContent(step.title || '').substring(0, 120), // Force 120 chars max for 150 limit
+      description: this.cleanContent(step.description || '').substring(0, 400) // Force 400 chars max for 500 limit
+    }));
+
+    // Fill to exactly 5 if needed
+    while (finalSteps.length < 5) {
+      finalSteps.push({
+        stepNumber: finalSteps.length + 1,
+        title: `Step ${finalSteps.length + 1}`,
+        description: 'Details will be provided during consultation.'
+      });
+    }
+
+    return finalSteps;
+  } catch (error) {
+    console.error('Error parsing steps:', error);
+    return [];
+  }
+};
+
+// Helper method to parse myths and facts
+servicePageSchema.methods.parseMythsAndFacts = function(content) {
+  const items = [];
+
+  try {
+    const lines = content.split(/[\n\r]+/);
+    let currentMyth = null;
+    let currentFact = null;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      if (trimmedLine.match(/^Myth\s*\d*[:]*\s*/i)) {
+        if (currentMyth && currentFact) {
+          items.push({ myth: currentMyth, fact: currentFact });
+        }
+        currentMyth = trimmedLine.replace(/^Myth\s*\d*[:]*\s*/i, '');
+        currentFact = null;
+      } else if (trimmedLine.match(/^Fact\s*\d*[:]*\s*/i)) {
+        currentFact = trimmedLine.replace(/^Fact\s*\d*[:]*\s*/i, '');
+      } else if (currentMyth && !currentFact && trimmedLine) {
+        currentMyth += ' ' + trimmedLine;
+      } else if (currentFact && trimmedLine) {
+        currentFact += ' ' + trimmedLine;
+      }
+    }
+
+    // Add last pair
+    if (currentMyth && currentFact) {
+      items.push({ myth: currentMyth, fact: currentFact });
+    }
+
+    return items.slice(0, 5);
+  } catch (error) {
+    console.error('Error parsing myths and facts:', error);
+    return [];
+  }
+};
+
+// Helper method to parse FAQs
+servicePageSchema.methods.parseFAQs = function(content) {
+  const questions = [];
+
+  try {
+    const lines = content.split(/[\n\r]+/);
+    let currentQ = null;
+    let currentA = null;
+    let questionNumber = 1;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      if (trimmedLine.match(/^Q\d*[:]*\s*/i) || trimmedLine.match(/^Question\s*\d*[:]*\s*/i)) {
+        if (currentQ && currentA) {
+          questions.push({
+            question: this.cleanContent(currentQ).substring(0, 150), // Super aggressive: 150 for 200 limit
+            answer: this.cleanContent(currentA).substring(0, 700), // Super aggressive: 700 for 1000 limit
+            category: this.categorizeFAQ(currentQ),
+            order: questionNumber++,
+            wordCount: this.countWords(currentA)
+          });
+        }
+        currentQ = this.cleanContent(trimmedLine.replace(/^(Q\d*|Question\s*\d*)[:]*\s*/i, '')).substring(0, 150);
+        currentA = null;
+      } else if (trimmedLine.match(/^A\d*[:]*\s*/i) || trimmedLine.match(/^Answer\s*\d*[:]*\s*/i)) {
+        currentA = this.cleanContent(trimmedLine.replace(/^(A\d*|Answer\s*\d*)[:]*\s*/i, '')).substring(0, 700);
+      } else if (currentQ && !currentA && trimmedLine) {
+        const additionalQ = ' ' + this.cleanContent(trimmedLine);
+        if (currentQ.length + additionalQ.length <= 150) { // Super aggressive: 150 for 200 limit
+          currentQ += additionalQ;
+        }
+      } else if (currentA && trimmedLine) {
+        const additionalA = ' ' + this.cleanContent(trimmedLine);
+        if (currentA.length + additionalA.length <= 700) { // Super aggressive: 700 for 1000 limit
+          currentA += additionalA;
+        }
+      }
+    }
+
+    // Add last pair
+    if (currentQ && currentA) {
+      questions.push({
+        question: this.cleanContent(currentQ).substring(0, 150), // Super aggressive: 150 for 200 limit
+        answer: this.cleanContent(currentA).substring(0, 700), // Super aggressive: 700 for 1000 limit
+        category: this.categorizeFAQ(currentQ),
+        order: questionNumber,
+        wordCount: this.countWords(currentA)
+      });
+    }
+
+    return questions.slice(0, 25);
+  } catch (error) {
+    console.error('Error parsing FAQs:', error);
+    return [];
+  }
+};
+
+// Helper method to categorize FAQ questions
+servicePageSchema.methods.categorizeFAQ = function(question) {
+  const q = question.toLowerCase();
+
+  if (q.includes('cost') || q.includes('price') || q.includes('insurance') || q.includes('expensive')) {
+    return 'cost';
+  } else if (q.includes('pain') || q.includes('hurt') || q.includes('discomfort') || q.includes('anesthesia')) {
+    return 'pain';
+  } else if (q.includes('recovery') || q.includes('heal') || q.includes('after') || q.includes('care')) {
+    return 'recovery';
+  } else if (q.includes('candidate') || q.includes('eligible') || q.includes('suitable') || q.includes('right for')) {
+    return 'candidacy';
+  } else if (q.includes('risk') || q.includes('danger') || q.includes('side effect') || q.includes('complication')) {
+    return 'risks';
+  } else if (q.includes('alternative') || q.includes('option') || q.includes('instead') || q.includes('other')) {
+    return 'alternatives';
+  } else if (q.includes('result') || q.includes('outcome') || q.includes('last') || q.includes('permanent')) {
+    return 'results';
+  } else if (q.includes('maintain') || q.includes('care') || q.includes('clean') || q.includes('upkeep')) {
+    return 'maintenance';
+  } else if (q.includes('procedure') || q.includes('process') || q.includes('how') || q.includes('what happens')) {
+    return 'procedure';
+  } else {
+    return 'general';
+  }
 };
 
 const ServicePage = mongoose.model('ServicePage', servicePageSchema);

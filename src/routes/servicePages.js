@@ -206,4 +206,49 @@ router.put('/:servicePageId/unified-data',
   ServicePageController.saveUnifiedEditingData
 );
 
+/**
+ * @route   POST /api/service-pages/:servicePageId/comprehensive-content/generate
+ * @desc    Generate comprehensive dental content (11 sections) for a service page
+ * @access  Private (Doctor only)
+ */
+router.post('/:servicePageId/comprehensive-content/generate',
+  validateServicePageId,
+  [
+    body('forceRegenerate').optional().isBoolean().withMessage('forceRegenerate must be a boolean'),
+    body('provider').optional().isIn(['auto', 'google-ai', 'deepseek', 'mock']).withMessage('Invalid provider'),
+    body('customKeywords').optional().isArray().withMessage('customKeywords must be an array'),
+    body('customCategory').optional().isString().withMessage('customCategory must be a string')
+  ],
+  ServicePageController.generateComprehensiveContent
+);
+
+/**
+ * @route   GET /api/service-pages/:servicePageId/comprehensive-content
+ * @desc    Get comprehensive content for a service page
+ * @access  Private (Doctor only)
+ */
+router.get('/:servicePageId/comprehensive-content',
+  validateServicePageId,
+  ServicePageController.getComprehensiveContent
+);
+
+/**
+ * @route   PUT /api/service-pages/:servicePageId/comprehensive-content/:sectionName
+ * @desc    Update specific section of comprehensive content
+ * @access  Private (Doctor only)
+ */
+router.put('/:servicePageId/comprehensive-content/:sectionName',
+  validateServicePageId,
+  [
+    param('sectionName').isIn([
+      'introduction', 'detailedExplanation', 'treatmentNeed', 'symptoms',
+      'consequences', 'procedureDetails', 'postTreatmentCare', 'detailedBenefits',
+      'sideEffects', 'mythsAndFacts', 'comprehensiveFAQ'
+    ]).withMessage('Invalid section name'),
+    body('content').optional().isObject().withMessage('Content must be an object'),
+    body('title').optional().isString().isLength({ max: 200 }).withMessage('Title must be a string with max 200 characters')
+  ],
+  ServicePageController.updateComprehensiveContentSection
+);
+
 module.exports = router;

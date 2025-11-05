@@ -389,7 +389,8 @@ const generateServiceContent = async (req, res) => {
       provider = 'auto',
       temperature = 0.7,
       keywords = [],
-      customPrompt = null
+      customPrompt = null,
+      websiteId = null // Optional website context for unique content generation
     } = req.body;
 
     // Get the service
@@ -401,6 +402,20 @@ const generateServiceContent = async (req, res) => {
       });
     }
 
+    // Get website context if provided
+    let websiteContext = {};
+    if (websiteId) {
+      const website = await Website.findById(websiteId);
+      if (website) {
+        websiteContext = {
+          websiteId: website._id,
+          websiteName: website.name,
+          doctorName: website.doctorName || 'Dr. Smith',
+          practiceLocation: website.location || 'Our Practice'
+        };
+      }
+    }
+
     if (contentType === 'full-page') {
       // Generate complete service page content
       const result = await llmService.generateServicePageContent({
@@ -409,7 +424,8 @@ const generateServiceContent = async (req, res) => {
         keywords: keywords.length > 0 ? keywords : service.seo.keywords
       }, {
         provider,
-        temperature
+        temperature,
+        ...websiteContext
       });
 
       res.json({
@@ -432,7 +448,8 @@ const generateServiceContent = async (req, res) => {
           category: service.category,
           provider,
           temperature,
-          customPrompt
+          customPrompt,
+          ...websiteContext
         }
       );
 
@@ -521,14 +538,21 @@ const generateContentFromServiceData = async (req, res) => {
       });
     }
 
-    // Generate complete service page content using LLM
-    const llmResult = await llmService.generateServicePageContent({
+    // Generate comprehensive 11-section content using LLM with website context
+    console.log(`🎨 Generating comprehensive 11-section content for: ${serviceName} (Website: ${website.name})`);
+    const llmResult = await llmService.generateComprehensiveDentalContent({
       serviceName,
       category: category || 'general-dentistry',
       keywords: keywords.length > 0 ? keywords : []
     }, {
       provider,
-      temperature
+      temperature,
+      comprehensive: true,
+      // Pass website context for unique content generation
+      websiteId: website._id,
+      websiteName: website.name,
+      doctorName: website.doctorName || 'Dr. Smith',
+      practiceLocation: website.location || 'Our Practice'
     });
 
     // Create service slug
@@ -571,37 +595,194 @@ const generateContentFromServiceData = async (req, res) => {
       title: serviceName,
       slug: slug, // Use the same slug as the service
       content: {
+        // 1. Introduction (100 words in simple patient terms)
         overview: {
-          title: 'Overview',
-          content: llmResult.content.serviceOverview?.content || `Professional ${serviceName} services`
+          title: 'What is ' + serviceName + '?',
+          content: llmResult.content.introduction?.content || `Professional ${serviceName} services with expert care and modern technology.`,
+          highlights: []
         },
-        benefits: generateBenefits && llmResult.content.serviceBenefits ? {
-          title: 'Benefits',
-          introduction: 'Key benefits of this service:',
-          list: parseBenefitsFromLLM(llmResult.content.serviceBenefits.content)
-        } : undefined,
-        procedure: generateProcedure && llmResult.content.procedureSteps ? {
-          title: 'The Procedure',
-          introduction: 'What to expect:',
-          steps: parseStepsFromLLM(llmResult.content.procedureSteps.content)
-        } : undefined,
-        faq: generateFAQ && llmResult.content.faqGeneration ? {
-          title: 'Frequently Asked Questions',
-          introduction: 'Common questions about this service:',
-          questions: parseFAQFromLLM(llmResult.content.faqGeneration.content)
-        } : undefined,
-        aftercare: llmResult.content.aftercareInstructions ? {
-          title: 'Recovery & Aftercare',
+
+        // 2. What does it entail (500 words in 5 bullet points)
+        benefits: {
+          title: 'What Does ' + serviceName + ' Entail?',
+          introduction: 'Here\'s what this treatment involves:',
+          list: parseLLMContentToBulletPoints(llmResult.content.detailedExplanation?.content, 'What this treatment entails', 5)
+        },
+
+        // 3. Why undergo this treatment (500 words in 5 bullet points)
+        procedure: {
+          title: 'Why Do You Need ' + serviceName + '?',
+          introduction: 'Reasons you may need this treatment:',
+          steps: parseLLMContentToSteps(llmResult.content.treatmentNeed?.content, 'Treatment needs', 5)
+        },
+
+        // 4. Symptoms requiring treatment (500 words in 5 bullet points)
+        symptoms: {
+          title: 'Symptoms That Require ' + serviceName,
+          introduction: 'Watch for these signs:',
+          bulletPoints: parseLLMContentToBulletPoints(llmResult.content.symptoms?.content, 'Symptoms', 5)
+        },
+
+        // 5. Consequences if not performed (500 words in 5 bullet points)
+        consequences: {
+          title: 'Consequences of Delaying ' + serviceName,
+          introduction: 'What happens if you delay treatment:',
+          bulletPoints: parseLLMContentToBulletPoints(llmResult.content.consequences?.content, 'Consequences', 5)
+        },
+
+        // 6. Treatment procedure (500 words in 5 steps)
+        procedureDetails: {
+          title: serviceName + ' Procedure - Step by Step',
+          steps: parseLLMContentToSteps(llmResult.content.procedureSteps?.content, serviceName + ' procedure', 5),
+          totalWordCount: llmResult.content.procedureSteps?.wordCount || 0
+        },
+
+        // 7. Post-treatment care (500 words in 5 bullet points)
+        aftercare: {
+          title: 'Post-Treatment Care for ' + serviceName,
+          showSection: true,
           introduction: 'Important aftercare instructions:',
-          instructions: parseAfterCareFromLLM(llmResult.content.aftercareInstructions.content),
-          showSection: true
-        } : undefined,
+          instructions: parseAfterCareFromLLM(llmResult.content.postTreatmentCare?.content || 'Follow standard aftercare procedures.'),
+          warnings: []
+        },
+
+        // 8. Benefits (500 words in 5 bullet points)
+        detailedBenefits: {
+          title: 'Benefits of ' + serviceName,
+          introduction: 'Key advantages of this treatment:',
+          bulletPoints: parseLLMContentToBulletPoints(llmResult.content.procedureBenefits?.content, 'Benefits', 5)
+        },
+
+        // 9. Side effects (500 words in 5 bullet points)
+        sideEffects: {
+          title: 'Potential Side Effects of ' + serviceName,
+          introduction: 'What to expect and watch for:',
+          bulletPoints: parseLLMContentToBulletPoints(llmResult.content.sideEffects?.content, 'Side effects', 5)
+        },
+
+        // 10. Myths and facts (500 words - 5 myths/facts)
+        mythsAndFacts: {
+          title: serviceName + ': Myths vs Facts',
+          introduction: 'Common misconceptions and truths:',
+          items: parseLLMContentToMythsAndFacts(llmResult.content.mythsAndFacts?.content, serviceName, 5),
+          totalWordCount: llmResult.content.mythsAndFacts?.wordCount || 0
+        },
+
+        // 11. Comprehensive FAQ (25 questions with 100-word answers)
+        faq: {
+          title: 'Frequently Asked Questions About ' + serviceName,
+          introduction: 'Comprehensive answers to your questions:',
+          questions: parseLLMContentToFAQ(llmResult.content.comprehensiveFAQ?.content, serviceName, 25)
+        },
+
+        // Call-to-action section
         cta: {
           title: `Ready for ${serviceName}?`,
           subtitle: `Schedule your ${serviceName} consultation today.`,
           buttonText: 'Book Consultation',
           phoneNumber: '(555) 123-4567',
           backgroundColor: '#1976d2'
+        },
+
+        // Hero section
+        hero: {
+          ctaText: 'Book Appointment'
+        },
+
+        // Pricing section (hidden by default)
+        pricing: {
+          title: 'Pricing',
+          showPricing: false,
+          plans: []
+        },
+
+        // Before & After section (hidden by default)
+        beforeAfter: {
+          title: 'Before & After',
+          showSection: false,
+          gallery: []
+        },
+
+        // Custom sections (empty by default)
+        customSections: [],
+
+        // Comprehensive content sections for detailed dental service information
+        comprehensiveContent: {
+          // 1. Introduction (100 words in simple patient terms)
+          introduction: {
+            content: llmResult.content.introduction?.content || `Professional ${serviceName} services with expert care and modern technology.`,
+            wordCount: llmResult.content.introduction?.wordCount || 0
+          },
+
+          // 2. What does it entail - Detailed explanation (500 words in 5 bullet points)
+          detailedExplanation: {
+            title: 'What Does This Treatment Entail?',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.detailedExplanation?.content, 'What this treatment entails', 5),
+            totalWordCount: llmResult.content.detailedExplanation?.wordCount || 0
+          },
+
+          // 3. Why does one need to undergo this treatment (500 words in 5 bullet points)
+          treatmentNeed: {
+            title: 'Why Do You Need This Treatment?',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.treatmentNeed?.content, 'Treatment needs', 5),
+            totalWordCount: llmResult.content.treatmentNeed?.wordCount || 0
+          },
+
+          // 4. Symptoms for which this treatment is required (500 words in 5 bullet points)
+          symptoms: {
+            title: 'Signs You May Need This Treatment',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.symptoms?.content, 'Symptoms', 5),
+            totalWordCount: llmResult.content.symptoms?.wordCount || 0
+          },
+
+          // 5. Consequences when this treatment is not performed (500 words in 5 bullet points)
+          consequences: {
+            title: 'What Happens If Treatment Is Delayed?',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.consequences?.content, 'Consequences', 5),
+            totalWordCount: llmResult.content.consequences?.wordCount || 0
+          },
+
+          // 6. What is the procedure for this treatment - 5 steps (500 words)
+          procedureDetails: {
+            title: 'Step-by-Step Procedure',
+            steps: parseLLMContentToSteps(llmResult.content.procedureSteps?.content, serviceName + ' procedure', 5),
+            totalWordCount: llmResult.content.procedureSteps?.wordCount || 0
+          },
+
+          // 7. Post-treatment care (500 words in 5 bullet points)
+          postTreatmentCare: {
+            title: 'Post-Treatment Care Instructions',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.postTreatmentCare?.content, 'Aftercare', 5),
+            totalWordCount: llmResult.content.postTreatmentCare?.wordCount || 0
+          },
+
+          // 8. Benefits of this procedure (500 words in 5 bullet points)
+          detailedBenefits: {
+            title: 'Benefits of This Treatment',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.procedureBenefits?.content, 'Benefits', 5),
+            totalWordCount: llmResult.content.procedureBenefits?.wordCount || 0
+          },
+
+          // 9. Side effects (500 words in 5 bullet points)
+          sideEffects: {
+            title: 'Potential Side Effects',
+            bulletPoints: parseLLMContentToBulletPoints(llmResult.content.sideEffects?.content, 'Side effects', 5),
+            totalWordCount: llmResult.content.sideEffects?.wordCount || 0
+          },
+
+          // 10. Myths and facts (500 words - 5 myths and facts)
+          mythsAndFacts: {
+            title: 'Common Myths and Facts',
+            items: parseLLMContentToMythsAndFacts(llmResult.content.mythsAndFacts?.content, serviceName, 5),
+            totalWordCount: llmResult.content.mythsAndFacts?.wordCount || 0
+          },
+
+          // 11. Comprehensive FAQs (25 FAQs with 100-word answers)
+          comprehensiveFAQ: {
+            title: 'Comprehensive FAQ',
+            questions: parseLLMContentToFAQ(llmResult.content.comprehensiveFAQ?.content, serviceName, 25),
+            totalQuestions: llmResult.content.comprehensiveFAQ?.questions?.length || 0
+          }
         }
       },
       seo: generateSEO && llmResult.content.seoContent ? {
@@ -657,159 +838,300 @@ const generateContentFromServiceData = async (req, res) => {
 // Helper functions to parse LLM content
 function parseBenefitsFromLLM(content) {
   try {
-    // Try to extract benefits from LLM response
-    const lines = content.split('\n').filter(line => line.trim());
+    // Clean content first
+    const cleanedContent = content
+      .replace(/\*\*Answer:\*\*\s*/gi, '')
+      .replace(/\*\*Question:\*\*\s*/gi, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/Answer:\s*/gi, '')
+      .replace(/Question:\s*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const lines = cleanedContent.split('\n').filter(line => line.trim());
     const benefits = [];
 
     for (const line of lines) {
-      if (line.includes('•') || line.includes('-') || line.includes('*')) {
+      if ((line.includes('•') || line.includes('-') || line.includes('*')) && benefits.length < 5) {
         const benefit = line.replace(/[•\-*]\s*/, '').trim();
         if (benefit) {
           const parts = benefit.split(':');
           let title = parts[0]?.trim() || benefit;
-          // Remove markdown formatting and truncate title if needed
-          title = title.replace(/\*\*/g, '').replace(/\*/g, '').trim();
-          if (title.length > 95) {
-            title = title.substring(0, 95) + '...';
-          }
+          let description = parts[1]?.trim() || '';
+
+          // Super aggressive limits
+          title = title.substring(0, 60); // Force 60 chars max for 100 schema limit
+          description = description.substring(0, 200); // Force 200 chars max for 300 schema limit
+
           benefits.push({
             title: title,
-            description: parts[1]?.trim() || ''
+            description: description
           });
         }
       }
     }
 
-    return benefits.length > 0 ? benefits : [{
-      title: 'Professional Treatment',
-      description: 'High-quality dental care'
-    }];
+    // Ensure exactly 5 benefits
+    while (benefits.length < 5) {
+      benefits.push({
+        title: `Benefit ${benefits.length + 1}`,
+        description: 'Professional dental care benefit.'
+      });
+    }
+
+    return benefits.slice(0, 5); // Force exactly 5
   } catch (error) {
-    return [{
-      title: 'Professional Treatment',
-      description: 'High-quality dental care'
-    }];
+    return Array(5).fill().map((_, i) => ({
+      title: `Benefit ${i + 1}`,
+      description: 'Professional dental care benefit.'
+    }));
   }
 }
 
 function parseStepsFromLLM(content) {
   try {
-    const lines = content.split('\n').filter(line => line.trim());
+    // Clean content first
+    const cleanedContent = content
+      .replace(/\*\*Answer:\*\*\s*/gi, '')
+      .replace(/\*\*Question:\*\*\s*/gi, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/Answer:\s*/gi, '')
+      .replace(/Question:\s*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const lines = cleanedContent.split('\n').filter(line => line.trim());
     const steps = [];
     let stepNumber = 1;
 
     for (const line of lines) {
-      if (line.match(/^\d+\./) || line.includes('Step') || line.includes('•') || line.includes('-')) {
+      if ((line.match(/^\d+\./) || line.includes('Step') || line.includes('•') || line.includes('-')) && steps.length < 5) {
         const step = line.replace(/^\d+\.\s*/, '').replace(/Step\s*\d+\s*[:\-]?\s*/i, '').replace(/[•\-]\s*/, '').trim();
         if (step) {
           const parts = step.split(':');
           let title = parts[0]?.trim() || `Step ${stepNumber}`;
-          // Remove markdown formatting and truncate title if needed
-          title = title.replace(/\*\*/g, '').replace(/\*/g, '').trim();
-          if (title.length > 95) {
-            title = title.substring(0, 95) + '...';
-          }
+          let description = parts[1]?.trim() || step;
+
+          // ULTRA AGGRESSIVE LIMITS (schema shows 100/500 limits, not 150/500)
+          title = title.substring(0, 80); // Force 80 chars max for 100 schema limit
+          description = description.substring(0, 400); // Force 400 chars max for 500 schema limit
+
           steps.push({
             stepNumber: stepNumber++,
             title: title,
-            description: parts[1]?.trim() || step
+            description: description
           });
         }
       }
     }
 
-    return steps.length > 0 ? steps : [{
-      stepNumber: 1,
-      title: 'Consultation',
-      description: 'Initial consultation and examination'
-    }];
+    // Ensure exactly 5 steps
+    while (steps.length < 5) {
+      steps.push({
+        stepNumber: steps.length + 1,
+        title: `Step ${steps.length + 1}`,
+        description: 'Additional procedure details.'
+      });
+    }
+
+    return steps.slice(0, 5); // Force exactly 5
   } catch (error) {
-    return [{
-      stepNumber: 1,
-      title: 'Consultation',
-      description: 'Initial consultation and examination'
-    }];
+    return Array(5).fill().map((_, i) => ({
+      stepNumber: i + 1,
+      title: `Step ${i + 1}`,
+      description: 'Procedure step details.'
+    }));
   }
 }
 
 function parseFAQFromLLM(content) {
   try {
-    const lines = content.split('\n').filter(line => line.trim());
+    // Clean content first - SUPER AGGRESSIVE
+    const cleanedContent = content
+      .replace(/\*\*Answer:\*\*\s*/gi, '')
+      .replace(/\*\*Question:\*\*\s*/gi, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/Answer:\s*/gi, '')
+      .replace(/Question:\s*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const lines = cleanedContent.split('\n').filter(line => line.trim());
     const faqs = [];
     let currentQuestion = '';
     let currentAnswer = '';
 
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < lines.length && faqs.length < 10; i++) { // Limit to 10 FAQs max
       const line = lines[i].trim();
 
       if (line.includes('?') || line.toLowerCase().includes('q:') || line.toLowerCase().includes('question')) {
         if (currentQuestion && currentAnswer) {
           faqs.push({
-            question: currentQuestion,
-            answer: currentAnswer
+            question: currentQuestion.substring(0, 150), // Super aggressive: 150 for 200 limit
+            answer: currentAnswer.substring(0, 700) // Super aggressive: 700 for 1000 limit
           });
         }
         currentQuestion = line.replace(/^q:\s*/i, '').replace(/^\d+\.\s*/, '').trim();
         currentAnswer = '';
       } else if (line && currentQuestion) {
-        currentAnswer += (currentAnswer ? ' ' : '') + line.replace(/^a:\s*/i, '').trim();
+        const additionalAnswer = line.replace(/^a:\s*/i, '').trim();
+        if (currentAnswer.length + additionalAnswer.length <= 700) {
+          currentAnswer += (currentAnswer ? ' ' : '') + additionalAnswer;
+        }
       }
     }
 
-    if (currentQuestion && currentAnswer) {
+    if (currentQuestion && currentAnswer && faqs.length < 10) {
       faqs.push({
-        question: currentQuestion,
-        answer: currentAnswer
+        question: currentQuestion.substring(0, 150), // Super aggressive: 150 for 200 limit
+        answer: currentAnswer.substring(0, 700) // Super aggressive: 700 for 1000 limit
       });
     }
 
-    return faqs.length > 0 ? faqs : [{
-      question: 'How long does the procedure take?',
-      answer: 'The duration varies depending on your specific needs. We will discuss timing during your consultation.'
-    }];
+    // Ensure we have at least 1 FAQ but not more than 10
+    if (faqs.length === 0) {
+      faqs.push({
+        question: 'How long does the procedure take?',
+        answer: 'Duration varies by individual needs. We discuss timing during consultation.'
+      });
+    }
+
+    return faqs.slice(0, 10); // Force max 10 FAQs
   } catch (error) {
     return [{
       question: 'How long does the procedure take?',
-      answer: 'The duration varies depending on your specific needs. We will discuss timing during your consultation.'
+      answer: 'Duration varies by individual needs. We discuss timing during consultation.'
     }];
   }
 }
 
 function parseAfterCareFromLLM(content) {
   try {
-    const lines = content.split('\n').filter(line => line.trim());
+    // Enhanced content cleaning to remove formatting patterns
+    const cleanedContent = content
+      .replace(/\*\*Answer:\*\*\s*/gi, '')
+      .replace(/\*\*Question:\*\*\s*/gi, '')
+      .replace(/\*\*Instruction:\*\*\s*/gi, '')
+      .replace(/\*\*Step:\*\*\s*/gi, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .trim();
+
+    const lines = cleanedContent.split('\n').filter(line => line.trim());
     const instructions = [];
 
+    // SUPER AGGRESSIVE LIMIT: Maximum 8 aftercare instructions (vs potential 50+ from LLM)
     for (const line of lines) {
-      if (line.includes('•') || line.includes('-') || line.includes('*') || line.match(/^\d+\./)) {
+      if ((line.includes('•') || line.includes('-') || line.includes('*') || line.match(/^\d+\./)) && instructions.length < 8) {
         const instruction = line.replace(/[•\-*]\s*/, '').replace(/^\d+\.\s*/, '').trim();
-        if (instruction) {
-          let title = instruction.split('.')[0] || instruction;
-          // Remove markdown formatting and truncate title if needed
+        if (instruction && instruction.length > 3) { // Ensure meaningful content
+          let title = instruction.split('.')[0] || instruction.split(':')[0] || instruction;
+          let description = instruction;
+
+          // Super aggressive content cleaning
           title = title.replace(/\*\*/g, '').replace(/\*/g, '').trim();
-          if (title.length > 95) {
-            title = title.substring(0, 95) + '...';
+          description = description.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+
+          // SUPER AGGRESSIVE LIMITS (vs schema limits of 100/250)
+          title = title.substring(0, 80).trim(); // 80 chars for 100 schema limit
+          description = description.substring(0, 200).trim(); // 200 chars for 250 schema limit
+
+          // Ensure title is not empty after cleaning
+          if (!title || title.length < 3) {
+            title = `Aftercare Step ${instructions.length + 1}`;
           }
+
+          // Ensure description is not empty
+          if (!description || description.length < 10) {
+            description = 'Follow the recommended aftercare procedures for optimal healing.';
+          }
+
           instructions.push({
             title: title,
-            description: instruction,
-            timeframe: extractTimeframe(instruction)
+            description: description,
+            timeframe: extractTimeframe(instruction) || 'First 24 hours'
           });
         }
       }
     }
 
-    return instructions.length > 0 ? instructions : [{
-      title: 'Follow post-treatment instructions',
-      description: 'Follow all post-treatment care instructions provided.',
-      timeframe: 'First 24 hours'
-    }];
+    // FORCE EXACTLY 5 INSTRUCTIONS (prevent instruction #42 errors)
+    if (instructions.length === 0) {
+      // Default instructions if none parsed
+      instructions.push(
+        {
+          title: 'Follow post-treatment instructions',
+          description: 'Follow all post-treatment care instructions provided by your dentist.',
+          timeframe: 'First 24 hours'
+        },
+        {
+          title: 'Take prescribed medications',
+          description: 'Take any prescribed medications as directed for optimal recovery.',
+          timeframe: 'As prescribed'
+        },
+        {
+          title: 'Apply ice if recommended',
+          description: 'Apply ice packs as recommended to reduce swelling and discomfort.',
+          timeframe: 'First 24 hours'
+        },
+        {
+          title: 'Avoid hard foods',
+          description: 'Stick to soft foods and avoid hard or crunchy items initially.',
+          timeframe: 'First 48 hours'
+        },
+        {
+          title: 'Schedule follow-up',
+          description: 'Schedule and attend your follow-up appointment as recommended.',
+          timeframe: '1-2 weeks'
+        }
+      );
+    }
+
+    // ENSURE EXACTLY 5 INSTRUCTIONS (no more instruction #42 errors)
+    const finalInstructions = instructions.slice(0, 5);
+
+    // Fill to exactly 5 if needed
+    while (finalInstructions.length < 5) {
+      finalInstructions.push({
+        title: `Care Step ${finalInstructions.length + 1}`,
+        description: 'Follow additional care instructions as provided by your dental professional.',
+        timeframe: 'As needed'
+      });
+    }
+
+    return finalInstructions;
   } catch (error) {
-    return [{
-      title: 'Follow post-treatment instructions',
-      description: 'Follow all post-treatment care instructions provided.',
-      timeframe: 'First 24 hours'
-    }];
+    // Safety fallback: always return exactly 5 instructions
+    return [
+      {
+        title: 'Follow post-treatment instructions',
+        description: 'Follow all post-treatment care instructions provided by your dentist.',
+        timeframe: 'First 24 hours'
+      },
+      {
+        title: 'Take prescribed medications',
+        description: 'Take any prescribed medications as directed for optimal recovery.',
+        timeframe: 'As prescribed'
+      },
+      {
+        title: 'Apply ice if recommended',
+        description: 'Apply ice packs as recommended to reduce swelling and discomfort.',
+        timeframe: 'First 24 hours'
+      },
+      {
+        title: 'Avoid hard foods',
+        description: 'Stick to soft foods and avoid hard or crunchy items initially.',
+        timeframe: 'First 48 hours'
+      },
+      {
+        title: 'Schedule follow-up',
+        description: 'Schedule and attend your follow-up appointment as recommended.',
+        timeframe: '1-2 weeks'
+      }
+    ];
   }
 }
 
@@ -1203,6 +1525,312 @@ const searchServices = async (req, res) => {
     });
   }
 };
+
+// Helper functions for default content generation
+function generateDefaultBulletPoints(topic, count = 5) {
+  const points = [];
+  for (let i = 1; i <= count; i++) {
+    points.push({
+      title: `${topic} Point ${i}`,
+      content: `Important information about ${topic.toLowerCase()} that helps patients understand this aspect of treatment.`
+    });
+  }
+  return points;
+}
+
+function generateDefaultSteps(serviceName, count = 5) {
+  const steps = [];
+  for (let i = 1; i <= count; i++) {
+    steps.push({
+      stepNumber: i,
+      title: `Step ${i}`,
+      description: `Professional ${serviceName} procedure step performed by your dental team.`
+    });
+  }
+  return steps;
+}
+
+function generateDefaultMythsAndFacts(serviceName, count = 5) {
+  const items = [];
+  for (let i = 1; i <= count; i++) {
+    items.push({
+      myth: `Common myth about ${serviceName} that patients often believe.`,
+      fact: `The actual truth about ${serviceName} based on current dental science and practice.`
+    });
+  }
+  return items;
+}
+
+function generateDefaultFAQ(serviceName, count = 25) {
+  const questions = [];
+  const topics = [
+    'procedure duration', 'cost and insurance', 'pain and discomfort', 'recovery time',
+    'candidacy requirements', 'preparation needed', 'follow-up care', 'results timeline',
+    'alternative treatments', 'risks and complications', 'success rates', 'maintenance',
+    'lifestyle changes', 'age considerations', 'medical history', 'technology used',
+    'aftercare instructions', 'appointment scheduling', 'emergency procedures', 'long-term effects',
+    'preventive measures', 'treatment comparison', 'specialist referrals', 'insurance coverage',
+    'second opinions'
+  ];
+
+  for (let i = 0; i < Math.min(count, topics.length); i++) {
+    questions.push({
+      question: `What should I know about ${topics[i]} for ${serviceName}?`,
+      answer: `This is important information about ${topics[i]} related to ${serviceName}. Your dental professional will provide detailed guidance specific to your individual needs and circumstances during your consultation.`
+    });
+  }
+
+  // Fill remaining slots if needed
+  while (questions.length < count) {
+    const index = questions.length + 1;
+    questions.push({
+      question: `What is question ${index} about ${serviceName}?`,
+      answer: `This is comprehensive information about ${serviceName} that addresses common patient concerns and provides helpful guidance for treatment decisions.`
+    });
+  }
+
+  return questions;
+}
+
+// Parse LLM text content into structured bullet points
+function parseLLMContentToBulletPoints(content, fallbackTopic = 'treatment', count = 5) {
+  if (!content || typeof content !== 'string') {
+    return generateDefaultBulletPoints(fallbackTopic, count);
+  }
+
+  const bulletPoints = [];
+
+  // Try to extract bullet points from LLM content
+  // Look for patterns like "* **Title:** Description" or "1. **Title:** Description"
+  const bulletRegex = /(?:^\s*[\*\-\+\d\.]\s*)?[\*\*]*([^:*\n]+?)[\*\*]*:\s*([^\n]+)/gm;
+  let match;
+
+  while ((match = bulletRegex.exec(content)) && bulletPoints.length < count) {
+    const title = match[1].trim().replace(/^\d+\.\s*/, '').replace(/^\*+\s*/, '');
+    const contentText = match[2].trim();
+
+    if (title && contentText) {
+      bulletPoints.push({
+        title: title.substring(0, 60), // Limit title to 60 chars
+        content: contentText.substring(0, 200) // Limit content to 200 chars
+      });
+    }
+  }
+
+  // If we couldn't parse enough bullet points, try alternative patterns
+  if (bulletPoints.length < 3) {
+    const lines = content.split('\n').filter(line => line.trim());
+    for (const line of lines) {
+      if (bulletPoints.length >= count) break;
+
+      // Look for lines that start with numbers, bullets, or asterisks
+      if (/^\s*[\*\-\+\d\.]\s/.test(line)) {
+        const cleanLine = line.replace(/^\s*[\*\-\+\d\.]\s*/, '').trim();
+        if (cleanLine.length > 10) {
+          // Split on first colon or use first part as title
+          const colonIndex = cleanLine.indexOf(':');
+          if (colonIndex > 0) {
+            const title = cleanLine.substring(0, colonIndex).trim().substring(0, 60);
+            const content = cleanLine.substring(colonIndex + 1).trim().substring(0, 200);
+            bulletPoints.push({ title, content });
+          } else {
+            // Use whole line as content with generic title
+            bulletPoints.push({
+              title: `${fallbackTopic} Point ${bulletPoints.length + 1}`,
+              content: cleanLine.substring(0, 200)
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Fill remaining slots with defaults if needed
+  while (bulletPoints.length < count) {
+    bulletPoints.push({
+      title: `${fallbackTopic} Point ${bulletPoints.length + 1}`,
+      content: `Important information about ${fallbackTopic.toLowerCase()} that helps patients understand this aspect of treatment.`
+    });
+  }
+
+  return bulletPoints.slice(0, count);
+}
+
+// Parse LLM content into procedure steps
+function parseLLMContentToSteps(content, fallbackTopic = 'Treatment', count = 5) {
+  const bulletPoints = parseLLMContentToBulletPoints(content, fallbackTopic, count);
+  return convertBulletPointsToSteps(bulletPoints);
+}
+
+// Parse LLM content into FAQ format
+function parseLLMContentToFAQ(content, serviceName, maxQuestions = 25) {
+  if (!content || typeof content !== 'string') {
+    return generateDefaultFAQ(serviceName, maxQuestions);
+  }
+
+  const questions = [];
+
+  // Look for Q: and A: patterns
+  const qaPairs = content.split(/Q:|(?=Q:)/).filter(part => part.trim());
+
+  for (const pair of qaPairs) {
+    if (questions.length >= maxQuestions) break;
+
+    const qMatch = pair.match(/^[:\s]*([^A:]+?)A:\s*(.+?)(?=Q:|$)/s);
+    if (qMatch) {
+      const question = qMatch[1].trim().replace(/\n/g, ' ').substring(0, 150);
+      const answer = qMatch[2].trim().replace(/\n/g, ' ').substring(0, 700);
+
+      if (question && answer) {
+        questions.push({
+          question: question,
+          answer: answer,
+          order: questions.length
+        });
+      }
+    }
+  }
+
+  // If we couldn't parse enough questions, fill with defaults
+  while (questions.length < Math.min(maxQuestions, 10)) {
+    const defaultQuestions = generateDefaultFAQ(serviceName, maxQuestions);
+    questions.push(...defaultQuestions.slice(questions.length));
+  }
+
+  return questions.slice(0, maxQuestions);
+}
+
+// Parse LLM content into myths and facts format
+function parseLLMContentToMythsAndFacts(content, serviceName, count = 5) {
+  if (!content || typeof content !== 'string') {
+    return generateDefaultMythsAndFacts(serviceName, count);
+  }
+
+  const items = [];
+
+  // Look for "Myth X:" and "Fact X:" patterns
+  const mythFactPattern = /Myth\s*\d*:\s*([^\n]+)\s*Fact\s*\d*:\s*([^\n]+)/gi;
+  let match;
+
+  while ((match = mythFactPattern.exec(content)) && items.length < count) {
+    const myth = match[1].trim();
+    const fact = match[2].trim();
+
+    if (myth && fact) {
+      items.push({
+        myth: myth.substring(0, 150),
+        fact: fact.substring(0, 150)
+      });
+    }
+  }
+
+  // If we couldn't parse enough myths/facts, try alternative patterns
+  if (items.length < 3) {
+    const sections = content.split(/myth|fact/i).filter(s => s.trim());
+    for (let i = 0; i < sections.length - 1 && items.length < count; i += 2) {
+      if (sections[i] && sections[i + 1]) {
+        items.push({
+          myth: sections[i].replace(/^\d+:?\s*/, '').trim().substring(0, 150),
+          fact: sections[i + 1].replace(/^\d+:?\s*/, '').trim().substring(0, 150)
+        });
+      }
+    }
+  }
+
+  // Fill remaining slots with defaults if needed
+  while (items.length < count) {
+    items.push({
+      myth: `Common myth about ${serviceName} that patients often believe.`,
+      fact: `The actual truth about ${serviceName} based on current dental science and practice.`
+    });
+  }
+
+  return items.slice(0, count);
+}
+
+// Parse LLM content into aftercare instructions format
+function parseAfterCareFromLLM(content) {
+  if (!content || typeof content !== 'string') {
+    return [
+      {
+        title: 'Follow Standard Care',
+        description: 'Follow standard aftercare procedures.',
+        timeframe: 'First 24 hours'
+      }
+    ];
+  }
+
+  const instructions = [];
+
+  // Look for numbered or bullet point instructions
+  const instructionRegex = /(?:^\s*[\*\-\+\d\.]\s*)?[\*\*]*([^:*\n]+?)[\*\*]*:\s*([^\n]+)/gm;
+  let match;
+
+  while ((match = instructionRegex.exec(content)) && instructions.length < 5) {
+    const title = match[1].trim().replace(/^\d+\.\s*/, '').substring(0, 80);
+    const description = match[2].trim().substring(0, 200);
+
+    if (title && description) {
+      instructions.push({
+        title: title,
+        description: description,
+        timeframe: 'First 24 hours'
+      });
+    }
+  }
+
+  // If we couldn't parse enough instructions, try line-by-line
+  if (instructions.length < 3) {
+    const lines = content.split('\n').filter(line => line.trim());
+    for (const line of lines) {
+      if (instructions.length >= 5) break;
+
+      if (/^\s*[\*\-\+\d\.]\s/.test(line)) {
+        const cleanLine = line.replace(/^\s*[\*\-\+\d\.]\s*/, '').trim();
+        if (cleanLine.length > 10) {
+          const colonIndex = cleanLine.indexOf(':');
+          if (colonIndex > 0) {
+            instructions.push({
+              title: cleanLine.substring(0, colonIndex).trim().substring(0, 80),
+              description: cleanLine.substring(colonIndex + 1).trim().substring(0, 200),
+              timeframe: 'First 24 hours'
+            });
+          } else {
+            instructions.push({
+              title: cleanLine.substring(0, 80),
+              description: cleanLine.substring(0, 200),
+              timeframe: 'First 24 hours'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Ensure we have at least one instruction
+  if (instructions.length === 0) {
+    instructions.push({
+      title: 'Follow Care Instructions',
+      description: 'Follow the care instructions provided by your dental professional.',
+      timeframe: 'First 24 hours'
+    });
+  }
+
+  return instructions.slice(0, 5);
+}
+
+// Convert bullet points to steps format (with required stepNumber field)
+function convertBulletPointsToSteps(bulletPoints) {
+  if (!bulletPoints || !Array.isArray(bulletPoints)) {
+    return generateDefaultSteps('Treatment', 5);
+  }
+
+  return bulletPoints.map((point, index) => ({
+    stepNumber: index + 1,
+    title: point.title || `Step ${index + 1}`,
+    description: point.content || point.description || 'Important treatment information.'
+  }));
+}
 
 module.exports = {
   getAllServices,

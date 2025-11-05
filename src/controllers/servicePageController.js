@@ -779,6 +779,301 @@ class ServicePageController {
       });
     }
   }
+
+  /**
+   * Generate comprehensive dental content for a service page
+   * This generates all 11 sections with detailed content as per requirements
+   */
+  static async generateComprehensiveContent(req, res) {
+    try {
+      const { servicePageId } = req.params;
+      const {
+        forceRegenerate = false,
+        provider = 'auto',
+        customKeywords = [],
+        customCategory = null
+      } = req.body;
+
+      const servicePage = await ServicePage.findById(servicePageId)
+        .populate('serviceId')
+        .populate('websiteId');
+
+      if (!servicePage) {
+        return res.status(404).json({
+          success: false,
+          message: 'Service page not found'
+        });
+      }
+
+      // Check access
+      if (servicePage.doctorId.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Check if comprehensive content already exists and if regeneration is needed
+      if (!forceRegenerate && servicePage.content.comprehensiveContent) {
+        const existingContent = servicePage.content.comprehensiveContent;
+        const hasAllSections = [
+          'introduction', 'detailedExplanation', 'treatmentNeed', 'symptoms',
+          'consequences', 'procedureDetails', 'postTreatmentCare', 'detailedBenefits',
+          'sideEffects', 'mythsAndFacts', 'comprehensiveFAQ'
+        ].every(section => existingContent[section]);
+
+        if (hasAllSections) {
+          return res.json({
+            success: true,
+            message: 'Comprehensive content already exists',
+            data: {
+              content: existingContent,
+              cached: true,
+              generated: false
+            }
+          });
+        }
+      }
+
+      // Prepare service data for LLM generation
+      const serviceName = servicePage.serviceId?.name || servicePage.title;
+      const category = customCategory || servicePage.serviceId?.category || 'general-dentistry';
+      const keywords = customKeywords.length > 0 ? customKeywords :
+        (servicePage.seo?.keywords || [serviceName.toLowerCase(), 'dental treatment']);
+
+      const serviceData = {
+        serviceName,
+        category,
+        keywords
+      };
+
+      console.log(`Starting comprehensive content generation for ${serviceName}`);
+
+      // Generate comprehensive content using LLM service
+      const llmService = require('../services/llmService');
+      const generationResult = await llmService.generateComprehensiveDentalContent(serviceData, {
+        provider,
+        temperature: 0.7
+      });
+
+      if (!generationResult.success) {
+        throw new Error('LLM content generation failed');
+      }
+
+      console.log(`LLM generation completed for ${serviceName}. Processing and storing content...`);
+
+      // Parse and store the generated content
+      const comprehensiveContent = servicePage.parseAndStoreComprehensiveContent(generationResult.content);
+
+      // Create a new version with the comprehensive content
+      await servicePage.createVersion(
+        servicePage.content,
+        [],
+        servicePage.seo,
+        servicePage.design,
+        req.user.id,
+        `Comprehensive content generated for ${serviceName} using ${generationResult.content.provider || 'LLM'}`
+      );
+
+      // Update generation metadata
+      servicePage.generation = {
+        lastGenerated: new Date(),
+        generatedBy: provider,
+        llmModel: generationResult.content.model || 'unknown',
+        tokensUsed: generationResult.totalTokensUsed,
+        generationTime: Date.now() - new Date(generationResult.generatedAt).getTime(),
+        autoRegenerate: false
+      };
+
+      servicePage.lastModifiedBy = req.user.id;
+      servicePage.status = 'draft';
+
+      await servicePage.save();
+
+      console.log(`Comprehensive content successfully generated and stored for ${serviceName}`);
+
+      res.json({
+        success: true,
+        message: 'Comprehensive content generated successfully',
+        data: {
+          servicePageId: servicePage._id,
+          serviceName,
+          content: comprehensiveContent,
+          generation: {
+            sectionsGenerated: generationResult.sectionsGenerated,
+            totalSections: generationResult.totalSections,
+            tokensUsed: generationResult.totalTokensUsed,
+            provider: generationResult.content.provider || provider,
+            generatedAt: generationResult.generatedAt
+          },
+          comprehensive: true,
+          cached: false,
+          generated: true
+        }
+      });
+    } catch (error) {
+      console.error('Error generating comprehensive content:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate comprehensive content',
+        error: error.message,
+        details: error.stack
+      });
+    }
+  }
+
+  /**
+   * Get comprehensive content for a service page
+   */
+  static async getComprehensiveContent(req, res) {
+    try {
+      const { servicePageId } = req.params;
+
+      const servicePage = await ServicePage.findById(servicePageId)
+        .populate('serviceId')
+        .select('content.comprehensiveContent generation title');
+
+      if (!servicePage) {
+        return res.status(404).json({
+          success: false,
+          message: 'Service page not found'
+        });
+      }
+
+      // Check access
+      if (servicePage.doctorId.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      const comprehensiveContent = servicePage.content.comprehensiveContent || {};
+      const hasContent = Object.keys(comprehensiveContent).length > 0;
+
+      // Calculate content statistics
+      const stats = {
+        totalSections: 11,
+        completedSections: Object.keys(comprehensiveContent).length,
+        totalWords: 0,
+        totalQuestions: comprehensiveContent.comprehensiveFAQ?.totalQuestions || 0,
+        lastGenerated: servicePage.generation?.lastGenerated,
+        generatedBy: servicePage.generation?.generatedBy
+      };
+
+      // Count total words across all sections
+      Object.values(comprehensiveContent).forEach(section => {
+        if (section.wordCount) stats.totalWords += section.wordCount;
+        if (section.totalWordCount) stats.totalWords += section.totalWordCount;
+      });
+
+      res.json({
+        success: true,
+        data: {
+          hasContent,
+          content: comprehensiveContent,
+          stats,
+          serviceName: servicePage.serviceId?.name || servicePage.title,
+          lastModified: servicePage.updatedAt
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching comprehensive content:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch comprehensive content',
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Update specific section of comprehensive content
+   */
+  static async updateComprehensiveContentSection(req, res) {
+    try {
+      const { servicePageId, sectionName } = req.params;
+      const { content, title } = req.body;
+
+      const servicePage = await ServicePage.findById(servicePageId);
+
+      if (!servicePage) {
+        return res.status(404).json({
+          success: false,
+          message: 'Service page not found'
+        });
+      }
+
+      // Check access
+      if (servicePage.doctorId.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Validate section name
+      const validSections = [
+        'introduction', 'detailedExplanation', 'treatmentNeed', 'symptoms',
+        'consequences', 'procedureDetails', 'postTreatmentCare', 'detailedBenefits',
+        'sideEffects', 'mythsAndFacts', 'comprehensiveFAQ'
+      ];
+
+      if (!validSections.includes(sectionName)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid section name'
+        });
+      }
+
+      // Initialize comprehensive content if it doesn't exist
+      if (!servicePage.content.comprehensiveContent) {
+        servicePage.content.comprehensiveContent = {};
+      }
+
+      // Update the specific section
+      if (!servicePage.content.comprehensiveContent[sectionName]) {
+        servicePage.content.comprehensiveContent[sectionName] = {};
+      }
+
+      if (title) {
+        servicePage.content.comprehensiveContent[sectionName].title = title;
+      }
+
+      if (content) {
+        if (sectionName === 'introduction') {
+          servicePage.content.comprehensiveContent[sectionName].content = content;
+          servicePage.content.comprehensiveContent[sectionName].wordCount = servicePage.countWords(content);
+        } else {
+          servicePage.content.comprehensiveContent[sectionName] = {
+            ...servicePage.content.comprehensiveContent[sectionName],
+            ...content
+          };
+        }
+      }
+
+      servicePage.lastModifiedBy = req.user.id;
+      servicePage.status = 'draft';
+
+      await servicePage.save();
+
+      res.json({
+        success: true,
+        message: `Section '${sectionName}' updated successfully`,
+        data: {
+          sectionName,
+          updatedContent: servicePage.content.comprehensiveContent[sectionName]
+        }
+      });
+    } catch (error) {
+      console.error('Error updating comprehensive content section:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update comprehensive content section',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = ServicePageController;
