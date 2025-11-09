@@ -16,6 +16,15 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(express.json());
 
+// Request logging middleware
+app.use((req, res, next) => {
+  if (req.path.includes('/public/page/')) {
+    console.log(`🌐 PUBLIC PAGE REQUEST: ${req.method} ${req.path}`);
+    console.log(`🔍 Path parts:`, req.path.split('/'));
+  }
+  next();
+});
+
 // CORS configuration for production
 const corsOptions = {
   origin: function (origin, callback) {
@@ -37,8 +46,8 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.warn('Origin not in whitelist:', origin);
-      // In production, allow for now to diagnose issues
-      callback(null, true);
+      // Block unauthorized origins in production
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -80,6 +89,10 @@ app.use(session({
 
 // Session debugging middleware
 app.use((req, res, next) => {
+  if (req.path.includes('public/page')) {
+    console.log(`🔥 REQUEST TO PUBLIC PAGE: ${req.method} ${req.path}`);
+    console.log(`🔥 Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
+  }
   next();
 });
 
@@ -99,6 +112,7 @@ const pageRoutes = require('./routes/pages');
 const websiteRoutes = require('./routes/websites');
 const servicesRoutes = require('./routes/services');
 const servicePagesRoutes = require('./routes/servicePages');
+const blogsRoutes = require('./routes/blogs');
 const unifiedContentRoutes = require('./routes/unifiedContent');
 const dynamicSitesRoutes = require('./routes/dynamicSites');
 
@@ -111,9 +125,64 @@ app.use('/api/users', usersRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/services', servicesRoutes); // Move services route BEFORE pageRoutes
 app.use('/api/service-pages', servicePagesRoutes); // Service page editing routes
+app.use('/api/blogs', blogsRoutes); // Blog management and public access routes
 app.use('/api/unified-content', unifiedContentRoutes); // Unified content management routes
 app.use('/api/websites', websiteRoutes); // Website management routes
 app.use('/api/dynamic', dynamicSitesRoutes); // Dynamic site serving routes
+
+// Blog cards injection middleware - adds blog cards to service page responses
+app.use((req, res, next) => {
+  if (req.path.includes('/public/page/') && req.method === 'GET') {
+    const originalSend = res.json;
+    res.json = function(data) {
+      if (data && data.success && data.data && data.data.serviceId && !data.data.blogs) {
+        console.log('🔧 Injecting blog cards into service page response');
+
+        // Dynamically add blogs to the response
+        (async () => {
+          try {
+            const Blog = require('./src/models/Blog');
+            const pathParts = req.path.split('/');
+            const websiteId = pathParts[pathParts.length - 2];
+
+            const blogs = await Blog.find({
+              serviceId: data.data.serviceId._id || data.data.serviceId,
+              websiteId: websiteId,
+              isPublished: true
+            })
+            .select('_id title slug introduction readingTime wordCount url publishedAt featured')
+            .sort({ publishedAt: -1 })
+            .limit(6)
+            .lean();
+
+            const blogCards = blogs.map(blog => ({
+              id: blog._id,
+              title: blog.title,
+              slug: blog.slug,
+              summary: blog.introduction || 'Read this comprehensive guide about the treatment.',
+              readingTime: blog.readingTime || 5,
+              wordCount: blog.wordCount || 500,
+              url: blog.url || `/blog/${blog.slug}`,
+              publishedAt: blog.publishedAt,
+              featured: blog.featured || false
+            }));
+
+            console.log(`✅ Added ${blogCards.length} blog cards to service page response`);
+            data.data.blogs = blogCards;
+            originalSend.call(this, data);
+          } catch (error) {
+            console.error('❌ Error injecting blog cards:', error.message);
+            originalSend.call(this, data);
+          }
+        })();
+        return;
+      }
+      originalSend.call(this, data);
+    };
+  }
+  next();
+});
+
 app.use('/api', pageRoutes); // Destack page builder routes (catch-all should be last)
 
 // Basic route for testing

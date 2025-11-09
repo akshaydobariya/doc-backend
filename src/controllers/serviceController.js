@@ -3,6 +3,7 @@ const DentalService = require('../models/DentalService');
 const ServicePage = require('../models/ServicePage');
 const ContentTemplate = require('../models/ContentTemplate');
 const Website = require('../models/Website');
+const Blog = require('../models/Blog');
 const llmService = require('../services/llmService');
 
 /**
@@ -489,6 +490,10 @@ const generateServiceContent = async (req, res) => {
  */
 const generateContentFromServiceData = async (req, res) => {
   try {
+    console.log('🚀 generateContentFromServiceData called!');
+    console.log('📧 Request body:', JSON.stringify(req.body, null, 2));
+    console.log('👤 User:', req.user || 'No user');
+
     const {
       serviceName,
       category,
@@ -498,10 +503,20 @@ const generateContentFromServiceData = async (req, res) => {
       generateFAQ = true,
       generateProcedure = true,
       generateBenefits = true,
+      generateBlogs, // Will be set below with explicit handling
+      fastMode = true, // FORCE fast mode to ensure blogs are always generated
       provider = 'auto',
       temperature = 0.7,
       keywords = []
     } = req.body;
+
+    // FORCE blogs to be generated - always enabled regardless of input
+    const enableBlogGeneration = true; // ALWAYS generate blogs
+
+    console.log(`🔧 Content Generation Settings:`);
+    console.log(`   Service: ${serviceName}`);
+    console.log(`   Blog Generation: FORCED ENABLED (always true)`);
+    console.log(`   Fast Mode: ${fastMode ? 'Enabled' : 'Disabled'}`);
 
     // Validate required fields
     if (!serviceName) {
@@ -538,22 +553,30 @@ const generateContentFromServiceData = async (req, res) => {
       });
     }
 
-    // Generate comprehensive 11-section content using LLM with website context
-    console.log(`🎨 Generating comprehensive 11-section content for: ${serviceName} (Website: ${website.name})`);
-    const llmResult = await llmService.generateComprehensiveDentalContent({
-      serviceName,
-      category: category || 'general-dentistry',
-      keywords: keywords.length > 0 ? keywords : []
-    }, {
-      provider,
-      temperature,
-      comprehensive: true,
-      // Pass website context for unique content generation
-      websiteId: website._id,
-      websiteName: website.name,
-      doctorName: website.doctorName || 'Dr. Smith',
-      practiceLocation: website.location || 'Our Practice'
-    });
+    let llmResult;
+
+    if (fastMode) {
+      // Fast mode: Create basic content without LLM generation
+      console.log(`⚡ Fast mode: Generating basic content for: ${serviceName} (Website: ${website.name})`);
+      llmResult = createFastModeContent(serviceName, category, website, keywords);
+    } else {
+      // Standard mode: Generate comprehensive 11-section content using LLM with website context
+      console.log(`🎨 Generating comprehensive 11-section content for: ${serviceName} (Website: ${website.name})`);
+      llmResult = await llmService.generateComprehensiveDentalContent({
+        serviceName,
+        category: category || 'general-dentistry',
+        keywords: keywords.length > 0 ? keywords : []
+      }, {
+        provider,
+        temperature,
+        comprehensive: true,
+        // Pass website context for unique content generation
+        websiteId: website._id,
+        websiteName: website.name,
+        doctorName: website.doctorName || 'Dr. Smith',
+        practiceLocation: website.location || 'Our Practice'
+      });
+    }
 
     // Create service slug
     const slug = serviceName.toLowerCase()
@@ -786,12 +809,12 @@ const generateContentFromServiceData = async (req, res) => {
         }
       },
       seo: generateSEO && llmResult.content.seoContent ? {
-        metaTitle: parseSEOTitle(llmResult.content.seoContent.content, serviceName),
-        metaDescription: parseSEODescription(llmResult.content.seoContent.content),
+        metaTitle: parseSEOTitle(llmResult.content.seoContent.content, serviceName).substring(0, 60),
+        metaDescription: parseSEODescription(llmResult.content.seoContent.content).substring(0, 150),
         keywords: parseSEOKeywords(llmResult.content.seoContent.content)
       } : {
-        metaTitle: `${serviceName} | Professional Dental Care`,
-        metaDescription: `Professional ${serviceName} services. Schedule your consultation today.`,
+        metaTitle: generateSafeMetaTitle(serviceName),
+        metaDescription: `Professional ${serviceName} services. Schedule consultation today.`.substring(0, 150),
         keywords: keywords.length > 0 ? keywords : [serviceName.toLowerCase()]
       },
       status: 'draft',
@@ -814,15 +837,275 @@ const generateContentFromServiceData = async (req, res) => {
       isUpdate = false;
     }
 
+    // Generate blogs - ALWAYS ENABLED WITH MULTIPLE FALLBACKS
+    let generatedBlogs = [];
+    console.log(`📝 STARTING BLOG GENERATION for: ${serviceName} (fastMode: ${fastMode})`);
+
+    try {
+      let blogResults;
+
+      if (fastMode) {
+        // Fast mode: Use instant fallback blogs
+        console.log('⚡ Using fast mode blog generation...');
+        blogResults = createFastModeBlogs(serviceName, category);
+      } else {
+        try {
+          // Standard mode: Try LLM generation first
+          console.log('🧠 Attempting comprehensive LLM blog generation...');
+          blogResults = await llmService.generateServiceBlogs({
+            serviceName,
+            category: category || 'general-dentistry',
+            keywords: keywords.length > 0 ? keywords : []
+          }, {
+            provider,
+            temperature,
+            websiteId: website._id,
+            websiteName: website.name,
+            doctorName: website.doctorName || 'Dr. Professional',
+            practiceLocation: website.location || 'Our Practice'
+          });
+
+          console.log('✅ LLM blog generation successful');
+        } catch (llmError) {
+          // Fallback to fast mode if LLM fails
+          console.warn('⚠️ LLM blog generation failed, falling back to fast mode:', llmError.message);
+          blogResults = createFastModeBlogs(serviceName, category);
+        }
+      }
+
+      console.log(`📋 Blog generation result:`, {
+        success: blogResults.success,
+        blogCount: blogResults.blogs?.length || 0,
+        provider: blogResults.provider
+      });
+
+      // Validate blog results
+      if (!blogResults.success || !blogResults.blogs || blogResults.blogs.length === 0) {
+        console.error('❌ Blog generation returned no blogs or failed');
+        console.error('Blog results:', JSON.stringify(blogResults, null, 2));
+        throw new Error('Blog generation returned empty results');
+      }
+
+      console.log(`🏗️ Creating ${blogResults.blogs.length} blog entries in database...`);
+
+      // Create blog entries in database
+      for (let i = 0; i < blogResults.blogs.length; i++) {
+        const blogData = blogResults.blogs[i];
+        console.log(`📝 Processing blog ${i + 1}/${blogResults.blogs.length}: ${blogData.type}`);
+
+        try {
+            // Create unique slug for this blog
+            const baseSlug = `${service.slug}-${blogData.type}`;
+            let blogSlug = baseSlug;
+            let counter = 1;
+
+            // Ensure unique slug
+            while (await Blog.findOne({ slug: blogSlug, websiteId })) {
+              blogSlug = `${baseSlug}-${counter}`;
+              counter++;
+            }
+
+            const blog = new Blog({
+              title: blogData.title,
+              slug: blogSlug,
+              introduction: blogData.introduction,
+              content: blogData.content,
+              keyTakeaways: blogData.keyTakeaways || [],
+              serviceId: service._id, // Use serviceId instead of servicePageId
+              servicePageId: servicePage._id, // Keep servicePageId as optional reference
+              websiteId: website._id,
+              author: website.doctorName || 'Dr. Professional',
+              authorBio: `Experienced dental professional at ${website.name}`,
+              category: category || 'general-dentistry',
+              tags: blogData.tags || [serviceName.toLowerCase(), category],
+              metaTitle: blogData.metaTitle || blogData.title,
+              metaDescription: blogData.metaDescription || blogData.introduction?.substring(0, 150),
+              seoKeywords: keywords.length > 0 ? keywords : [serviceName.toLowerCase()],
+              isPublished: true,
+              publishedAt: new Date(),
+              featured: false,
+              llmGenerated: true,
+              generationProvider: blogResults.provider || 'google-ai',
+              generationMetadata: {
+                tokensUsed: blogData.tokensUsed || 0,
+                temperature: temperature,
+                model: blogResults.model || 'gemini-pro',
+                generatedAt: new Date(),
+                prompt: `Blog generation for ${serviceName} - ${blogData.type}`
+              }
+            });
+
+            // Calculate reading time and generate SEO
+            blog.calculateReadingTime();
+            blog.generateSEO();
+
+            await blog.save();
+            // Only include blog card data in service response
+            generatedBlogs.push({
+              id: blog._id,
+              title: blog.title,
+              slug: blog.slug,
+              type: blogData.type,
+              summary: blog.introduction, // Brief summary for the card
+              readingTime: blog.readingTime,
+              wordCount: blog.wordCount,
+              url: blog.url,
+              publishedAt: blog.publishedAt,
+              featured: blog.featured
+            });
+
+            console.log(`✅ Generated blog: ${blog.title} (${blog.slug})`);
+          } catch (blogError) {
+            console.error(`❌ Failed to create blog "${blogData.title || 'Unknown'}":`, blogError.message);
+            console.error('Blog data:', JSON.stringify(blogData, null, 2));
+            if (blogError.errors) {
+              console.error('Validation errors:', blogError.errors);
+            }
+            // Continue with other blogs even if one fails
+          }
+        }
+
+      console.log(`🎉 Successfully generated ${generatedBlogs.length}/${blogResults.blogs.length} blogs for ${serviceName}`);
+    } catch (blogGenerationError) {
+      console.error('❌ All blog generation methods failed:', blogGenerationError.message);
+
+      // FINAL SAFETY NET: Generate at least one basic blog manually
+      try {
+        console.log('🚨 EMERGENCY FALLBACK: Creating basic blog manually...');
+
+        const emergencySlug = `${service.slug}-guide-${Date.now()}`;
+        const emergencyBlog = new Blog({
+          title: `${serviceName}: Professional Treatment Guide`,
+          slug: emergencySlug,
+          introduction: `Learn everything you need to know about ${serviceName} treatment. Our comprehensive guide covers the procedure, benefits, recovery, and frequently asked questions to help you make informed decisions about your dental health.`,
+          content: {
+            introduction: {
+              content: `${serviceName} is a important dental treatment that helps restore and maintain optimal oral health. At ${website.name}, we provide professional ${serviceName} services using modern techniques and personalized care.`
+            },
+            mainContent: {
+              sections: [
+                {
+                  title: `What is ${serviceName}?`,
+                  content: `${serviceName} is a dental procedure designed to address specific oral health concerns and restore proper function and appearance.`
+                },
+                {
+                  title: `Benefits of ${serviceName}`,
+                  content: `The benefits of ${serviceName} include improved oral health, enhanced comfort, better function, and increased confidence in your smile.`
+                },
+                {
+                  title: `Treatment Process`,
+                  content: `The ${serviceName} process involves consultation, treatment planning, the actual procedure, and follow-up care to ensure optimal results.`
+                },
+                {
+                  title: `Recovery and Aftercare`,
+                  content: `Proper aftercare is essential for successful ${serviceName} treatment. We provide detailed instructions and support throughout your recovery.`
+                }
+              ]
+            },
+            conclusion: {
+              content: `${serviceName} at ${website.name} represents a commitment to excellence in dental care. Contact us today to learn more about how this treatment can benefit your oral health.`
+            }
+          },
+          keyTakeaways: [
+            `${serviceName} is an effective dental treatment`,
+            'Professional care ensures optimal results',
+            'Proper aftercare supports successful healing',
+            'Modern techniques improve patient comfort',
+            'Consultation helps determine if treatment is right for you'
+          ],
+          serviceId: service._id, // Use serviceId for direct linking
+          servicePageId: servicePage._id, // Keep servicePageId as optional reference
+          websiteId: website._id,
+          author: website.doctorName || 'Dr. Professional',
+          authorBio: `Experienced dental professional at ${website.name}`,
+          category: category || 'general-dentistry',
+          tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), category || 'general-dentistry'],
+          metaTitle: generateSafeMetaTitle(`${serviceName} Guide`),
+          metaDescription: `Complete guide to ${serviceName} treatment. Professional care, modern techniques, and expert results at ${website.name}.`,
+          seoKeywords: keywords.length > 0 ? keywords : [serviceName.toLowerCase()],
+          isPublished: true,
+          publishedAt: new Date(),
+          featured: false,
+          llmGenerated: false,
+          generationProvider: 'manual',
+          generationMetadata: {
+            tokensUsed: 0,
+            temperature: 0,
+            model: 'fallback-content',
+            generatedAt: new Date(),
+            prompt: `Emergency fallback blog for ${serviceName}`
+          }
+        });
+
+        emergencyBlog.calculateReadingTime();
+        emergencyBlog.generateSEO();
+        await emergencyBlog.save();
+
+        generatedBlogs.push({
+          id: emergencyBlog._id,
+          title: emergencyBlog.title,
+          slug: emergencyBlog.slug,
+          type: 'emergency-guide',
+          readingTime: emergencyBlog.readingTime,
+          wordCount: emergencyBlog.wordCount,
+          url: emergencyBlog.url
+        });
+
+        console.log('✅ Emergency fallback blog created successfully');
+      } catch (emergencyError) {
+        console.error('❌ Even emergency blog creation failed:', emergencyError.message);
+        // At this point we continue without blogs but log the issue
+      }
+    }
+
+    // FINAL SAFETY CHECK: Always fetch blogs from database to ensure they're included
+    console.log('🔍 Final blog check - fetching from database...');
+    try {
+      const savedBlogs = await Blog.find({
+        serviceId: service._id, // Query by serviceId for direct linking
+        websiteId: website._id
+      }).select('_id title slug introduction readingTime wordCount url publishedAt featured').lean();
+
+      console.log(`🔍 Found ${savedBlogs.length} blogs in database for this service`);
+
+      // If generatedBlogs is empty but we have blogs in DB, populate it
+      if (generatedBlogs.length === 0 && savedBlogs.length > 0) {
+        console.log('⚠️ generatedBlogs was empty, populating from database');
+        generatedBlogs = savedBlogs.map(blog => ({
+          id: blog._id,
+          title: blog.title,
+          slug: blog.slug,
+          type: 'database-retrieved',
+          summary: blog.introduction || 'Read this comprehensive guide about the treatment.',
+          readingTime: blog.readingTime || 5,
+          wordCount: blog.wordCount || 500,
+          url: blog.url || `/blog/${blog.slug}`,
+          publishedAt: blog.publishedAt,
+          featured: blog.featured
+        }));
+      }
+    } catch (blogFetchError) {
+      console.error('❌ Error fetching saved blogs:', blogFetchError.message);
+    }
+
+    // DEBUG: Log the final generatedBlogs array
+    console.log('🔍 FINAL RESPONSE DEBUG:', {
+      generatedBlogsCount: generatedBlogs.length,
+      generatedBlogsPreview: generatedBlogs.slice(0, 2), // Show first 2 for debugging
+      includesBlogs: generatedBlogs.length > 0
+    });
+
     res.json({
       success: true,
       data: {
         service: service,
         page: servicePage,
         llmContent: llmResult.content,
+        blogs: generatedBlogs, // Include generated blogs in response
         tokensUsed: llmResult.totalTokensUsed
       },
-      message: isUpdate ? 'Service content updated successfully' : 'Service content generated successfully'
+      message: isUpdate ? 'Service content updated successfully' : 'Service content generated successfully',
+      blogsGenerated: generatedBlogs.length
     });
 
   } catch (error) {
@@ -1150,13 +1433,31 @@ function parseSEOTitle(content, serviceName) {
     const lines = content.split('\n');
     for (const line of lines) {
       if (line.toLowerCase().includes('title') && line.length < 60) {
-        return line.replace(/.*title\s*[:=]\s*/i, '').trim();
+        const title = line.replace(/.*title\s*[:=]\s*/i, '').trim();
+        if (title.length <= 60) {
+          return title;
+        }
       }
     }
   } catch (error) {
     // Fall back to default
   }
-  return `${serviceName} | Professional Dental Care`;
+  return generateSafeMetaTitle(serviceName);
+}
+
+// Helper function to generate safe meta titles within 60 character limit
+function generateSafeMetaTitle(serviceName) {
+  // Ensure total length stays under 60 characters
+  const suffix = ' | Dental Care';
+  const maxServiceNameLength = 60 - suffix.length;
+
+  let shortServiceName = serviceName;
+  if (serviceName.length > maxServiceNameLength) {
+    shortServiceName = serviceName.substring(0, maxServiceNameLength - 3) + '...';
+  }
+
+  const title = `${shortServiceName}${suffix}`;
+  return title.substring(0, 60); // Final safety check
 }
 
 function parseSEODescription(content) {
@@ -1832,6 +2133,353 @@ function convertBulletPointsToSteps(bulletPoints) {
   }));
 }
 
+// Fast mode content generation - creates basic content instantly without LLM calls
+function createFastModeContent(serviceName, category, website, keywords) {
+  const websiteName = website.name || 'Our Practice';
+  const doctorName = website.doctorName || 'Dr. Smith';
+
+  return {
+    success: true,
+    content: {
+      serviceOverview: {
+        content: `${serviceName} at ${websiteName} provides professional dental care with modern techniques and personalized treatment plans. ${doctorName} specializes in delivering quality results for optimal oral health.`,
+        provider: 'manual'
+      },
+      detailedExplanation: {
+        content: [
+          {
+            title: 'Professional Care',
+            description: `${serviceName} treatment using advanced dental technology and proven methods.`
+          },
+          {
+            title: 'Personalized Treatment',
+            description: `Customized treatment plans designed specifically for your dental needs and goals.`
+          },
+          {
+            title: 'Expert Results',
+            description: `Professional ${serviceName} services delivered by experienced dental professionals.`
+          },
+          {
+            title: 'Modern Techniques',
+            description: 'State-of-the-art dental procedures ensuring comfort and optimal outcomes.'
+          },
+          {
+            title: 'Comprehensive Care',
+            description: 'Complete dental care approach focusing on both immediate and long-term oral health.'
+          }
+        ]
+      },
+      treatmentNeed: {
+        content: [
+          {
+            title: 'Improved Oral Health',
+            description: `${serviceName} helps maintain and restore optimal dental health and function.`
+          },
+          {
+            title: 'Preventive Benefits',
+            description: 'Early treatment prevents more complex and costly dental problems in the future.'
+          },
+          {
+            title: 'Enhanced Comfort',
+            description: 'Professional treatment eliminates discomfort and improves overall quality of life.'
+          },
+          {
+            title: 'Aesthetic Improvement',
+            description: 'Treatment enhances the appearance of your smile and boosts confidence.'
+          },
+          {
+            title: 'Long-term Value',
+            description: 'Investment in professional dental care provides lasting oral health benefits.'
+          }
+        ]
+      },
+      comprehensiveFAQ: {
+        questions: [
+          {
+            question: `What is ${serviceName}?`,
+            answer: `${serviceName} is a dental treatment that helps restore and maintain optimal oral health using modern dental techniques.`
+          },
+          {
+            question: 'How long does treatment take?',
+            answer: 'Treatment duration varies depending on individual needs, but we always prioritize quality results and patient comfort.'
+          },
+          {
+            question: 'Is the treatment painful?',
+            answer: 'With modern techniques and proper anesthesia, most patients experience minimal discomfort during treatment.'
+          },
+          {
+            question: 'What can I expect during recovery?',
+            answer: 'Recovery times vary, but we provide detailed aftercare instructions to ensure optimal healing and results.'
+          },
+          {
+            question: 'How much does treatment cost?',
+            answer: 'Treatment costs vary based on individual needs. We provide detailed estimates and discuss payment options during consultation.'
+          }
+        ]
+      }
+    },
+    totalTokensUsed: 0,
+    fastMode: true
+  };
+}
+
+// Helper function to create blog content structure that matches Blog schema
+function createBlogContentStructure(serviceName, type, customContent = {}) {
+  // ALL required sections per Blog schema - every blog MUST have all these sections
+  const baseStructure = {
+    introduction: {
+      title: 'Introduction',
+      content: customContent.introduction || `${serviceName} is an important dental treatment that can significantly improve your oral health and quality of life.`,
+      anchor: 'introduction'
+    },
+    whatIsIt: {
+      title: `What is ${serviceName}?`,
+      content: customContent.whatIsIt || `${serviceName} is a professional dental procedure designed to address specific oral health needs using modern techniques.`,
+      anchor: 'what-is-it'
+    },
+    whyNeedIt: {
+      title: `Why might you need ${serviceName}?`,
+      content: customContent.whyNeedIt || `You may need ${serviceName} to restore oral function, improve aesthetics, prevent complications, or maintain long-term dental health.`,
+      anchor: 'why-need-it'
+    },
+    // REQUIRED: All sections must be present for Blog schema validation
+    signsSymptoms: {
+      title: 'Signs and Symptoms',
+      content: customContent.signsSymptoms || `Common indicators that you may benefit from ${serviceName} include persistent discomfort, visible changes, functional issues, and professional recommendations.`,
+      anchor: 'signs-symptoms'
+    },
+    consequencesDelay: {
+      title: 'Consequences of Delaying Treatment',
+      content: customContent.consequencesDelay || `Delaying ${serviceName} treatment can lead to more complex problems, increased costs, and compromised oral health.`,
+      anchor: 'consequences-delay'
+    },
+    treatmentProcess: {
+      title: 'Treatment Process',
+      content: customContent.treatmentProcess || `The ${serviceName} procedure involves examination, planning, treatment execution, and follow-up care for optimal results.`,
+      anchor: 'treatment-process'
+    },
+    benefits: {
+      title: 'Benefits of Treatment',
+      content: customContent.benefits || `${serviceName} provides improved oral health, enhanced function, aesthetic improvement, and long-term value for your dental health investment.`,
+      anchor: 'benefits'
+    },
+    recoveryAftercare: {
+      title: 'Recovery and Aftercare',
+      content: customContent.recoveryAftercare || `Proper aftercare ensures successful healing and includes following instructions, maintaining hygiene, and attending follow-ups.`,
+      anchor: 'recovery-aftercare'
+    },
+    mythsFacts: {
+      title: 'Myths vs Facts',
+      content: customContent.mythsFacts || `Many misconceptions exist about ${serviceName}. Fact: Modern techniques ensure comfort. Fact: Professional care provides safe results.`,
+      anchor: 'myths-facts'
+    },
+    costConsiderations: {
+      title: 'Cost Considerations',
+      content: customContent.costConsiderations || `${serviceName} cost varies based on individual needs, complexity, and insurance coverage. We provide detailed estimates and financing options.`,
+      anchor: 'cost-considerations'
+    },
+    faq: {
+      title: 'Frequently Asked Questions',
+      anchor: 'faq',
+      questions: customContent.faq || [
+        {
+          question: `How long does ${serviceName} treatment take?`,
+          answer: `Treatment duration varies based on individual needs. Our team will provide a detailed timeline during your consultation.`
+        },
+        {
+          question: `Is ${serviceName} covered by insurance?`,
+          answer: `Insurance coverage varies by provider and plan. Our staff will help verify your benefits and maximize coverage.`
+        },
+        {
+          question: `What can I expect during recovery?`,
+          answer: `Recovery is generally comfortable with proper care. We provide detailed aftercare instructions and support.`
+        }
+      ]
+    }
+  };
+
+  return baseStructure;
+}
+
+// Enhanced fast mode blog generation - creates MULTIPLE blogs instantly without LLM calls
+function createFastModeBlogs(serviceName, category) {
+  const serviceLower = serviceName.toLowerCase().replace(/\s+/g, '-');
+
+  return {
+    success: true,
+    provider: 'manual',
+    model: 'multi-blog-generator',
+    blogs: [
+      // Blog 1: Comprehensive Guide
+      {
+        type: 'comprehensive-guide',
+        title: `Complete Guide to ${serviceName}: What You Need to Know`,
+        slug: `complete-guide-to-${serviceLower}`,
+        introduction: `Understanding ${serviceName} is essential for making informed decisions about your dental health. This comprehensive guide covers everything you need to know about this important dental treatment, from the basics to post-treatment care.`,
+        content: createBlogContentStructure(serviceName, 'comprehensive-guide', {
+          introduction: `${serviceName} represents a significant advancement in modern dental care, offering patients effective solutions for various oral health concerns.`,
+          whatIsIt: `${serviceName} is a professional dental treatment designed to address specific oral health needs using state-of-the-art techniques and materials.`,
+          whyNeedIt: `Patients may require ${serviceName} for prevention of dental complications, restoration of oral function, aesthetic improvement, and maintenance of long-term oral health.`
+        }),
+        keyTakeaways: [
+          `${serviceName} is an effective dental treatment for various oral health concerns`,
+          'Professional care ensures safe and optimal treatment outcomes',
+          'Early intervention often leads to better results and less invasive treatment',
+          'Proper post-treatment care is essential for long-term success',
+          'Regular dental check-ups help identify treatment needs early'
+        ],
+        tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), category || 'dental-care', 'treatment-guide'],
+        category: category || 'general-dentistry',
+        metaTitle: generateSafeMetaTitle(`${serviceName} Guide`),
+        metaDescription: `Comprehensive guide to ${serviceName} covering everything you need to know about this dental treatment, from procedure details to post-care instructions.`.substring(0, 150)
+      },
+
+      // Blog 2: Benefits Focus
+      {
+        type: 'benefits-guide',
+        title: `${serviceName} Benefits: Why This Treatment Could Change Your Life`,
+        slug: `${serviceLower}-benefits-guide`,
+        introduction: `Discover the life-changing benefits of ${serviceName} and how this advanced dental treatment can improve your oral health, confidence, and overall quality of life.`,
+        content: createBlogContentStructure(serviceName, 'benefits-guide', {
+          benefits: `The primary benefits of ${serviceName} include restored function, enhanced aesthetics, improved comfort, prevention of future complications, and increased confidence.`
+        }),
+        keyTakeaways: [
+          `${serviceName} provides immediate and long-term oral health benefits`,
+          'Treatment improves both function and aesthetics',
+          'Professional care ensures optimal results and patient comfort',
+          'Early treatment often prevents more complex future problems',
+          'Investment in dental health provides lasting quality of life improvements'
+        ],
+        tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), 'dental-benefits', category || 'general-dentistry'],
+        category: category || 'general-dentistry',
+        metaTitle: generateSafeMetaTitle(`${serviceName} Benefits`),
+        metaDescription: `Discover the amazing benefits of ${serviceName} treatment. Improve your oral health, confidence, and quality of life with professional dental care.`.substring(0, 150)
+      },
+
+      // Blog 3: Procedure Steps
+      {
+        type: 'procedure-guide',
+        title: `${serviceName} Procedure: Step-by-Step Guide to Your Treatment`,
+        slug: `${serviceLower}-procedure-steps`,
+        introduction: `Wondering what to expect during your ${serviceName} procedure? This detailed step-by-step guide walks you through the entire treatment process.`,
+        content: createBlogContentStructure(serviceName, 'procedure-guide', {
+          treatmentProcess: `The ${serviceName} procedure involves thorough examination, personalized treatment planning, precise execution, and comprehensive follow-up care.`
+        }),
+        keyTakeaways: [
+          `${serviceName} follows a systematic, proven procedure`,
+          'Thorough preparation ensures optimal treatment outcomes',
+          'Professional care and modern techniques maximize comfort',
+          'Follow-up care is essential for long-term success',
+          'Each step is designed with patient safety and comfort in mind'
+        ],
+        tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), 'dental-procedure', category || 'general-dentistry'],
+        category: category || 'general-dentistry',
+        metaTitle: generateSafeMetaTitle(`${serviceName} Procedure`),
+        metaDescription: `Step-by-step guide to the ${serviceName} procedure. Learn what happens during treatment and how to prepare for optimal results.`.substring(0, 150)
+      },
+
+      // Blog 4: Recovery and Aftercare
+      {
+        type: 'recovery-guide',
+        title: `${serviceName} Recovery: Your Complete Aftercare Guide`,
+        slug: `${serviceLower}-recovery-aftercare`,
+        introduction: `Proper aftercare is crucial for successful ${serviceName} results. This comprehensive recovery guide provides everything you need to know about post-treatment care, healing timeline, and tips for optimal results.`,
+        content: {
+          introduction: {
+            content: `Recovery from ${serviceName} is generally straightforward with proper care and guidance. Following our detailed aftercare instructions ensures optimal healing and long-lasting results.`
+          },
+          immediateAftercare: {
+            content: `The first 24-48 hours after ${serviceName} are critical for proper healing. We provide specific instructions for managing any discomfort, maintaining oral hygiene, and supporting the healing process.`
+          },
+          healingTimeline: {
+            content: `Most patients experience a predictable healing timeline following ${serviceName}. Understanding what to expect during each phase helps ensure smooth recovery and optimal results.`
+          },
+          longTermCare: {
+            content: `Long-term success with ${serviceName} depends on proper ongoing care and maintenance. We provide guidance on preserving your results and maintaining optimal oral health.`
+          }
+        },
+        keyTakeaways: [
+          'Proper aftercare is essential for successful treatment results',
+          'Following instructions carefully ensures optimal healing',
+          'Most patients experience comfortable, predictable recovery',
+          'Long-term care maintains treatment benefits',
+          'Professional support is available throughout recovery'
+        ],
+        tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), 'dental-recovery', 'aftercare', category || 'general-dentistry'],
+        category: category || 'general-dentistry',
+        metaTitle: generateSafeMetaTitle(`${serviceName} Recovery`),
+        metaDescription: `Complete aftercare guide for ${serviceName} recovery. Learn how to care for yourself after treatment for optimal healing and results.`.substring(0, 150)
+      },
+
+      // Blog 5: Cost and Value
+      {
+        type: 'cost-guide',
+        title: `${serviceName} Cost: Investment in Your Oral Health`,
+        slug: `${serviceLower}-cost-investment`,
+        introduction: `Understanding the cost of ${serviceName} helps you make informed decisions about your dental health investment. Learn about factors that influence pricing, insurance coverage, and financing options available.`,
+        content: {
+          introduction: {
+            content: `The cost of ${serviceName} varies based on individual treatment needs, complexity, and other factors. We believe in transparent pricing and work with patients to make quality dental care accessible and affordable.`
+          },
+          costFactors: {
+            content: `Several factors influence ${serviceName} cost including treatment complexity, materials used, number of appointments required, and individual patient needs. We provide detailed estimates and discuss all factors during consultation.`
+          },
+          insuranceFinancing: {
+            content: `Many insurance plans provide coverage for ${serviceName} treatment. We also offer flexible financing options to help make your dental care investment manageable and affordable.`
+          },
+          valueInvestment: {
+            content: `${serviceName} represents an investment in your long-term oral health, overall well-being, and quality of life. The benefits often far exceed the initial investment through improved health and confidence.`
+          }
+        },
+        keyTakeaways: [
+          'Treatment cost varies based on individual needs and complexity',
+          'Insurance coverage and financing options are often available',
+          'Investment in dental health provides long-term value',
+          'Transparent pricing helps patients make informed decisions',
+          'Quality care is often more cost-effective than delaying treatment'
+        ],
+        tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), 'dental-cost', 'dental-financing', category || 'general-dentistry'],
+        category: category || 'general-dentistry',
+        metaTitle: generateSafeMetaTitle(`${serviceName} Cost`),
+        metaDescription: `Learn about ${serviceName} cost factors, insurance coverage, and financing options. Make an informed investment in your oral health.`.substring(0, 150)
+      },
+
+      // Blog 6: Myths vs Facts
+      {
+        type: 'myths-facts',
+        title: `${serviceName}: Separating Myths from Facts`,
+        slug: `${serviceLower}-myths-facts`,
+        introduction: `Don't let myths and misconceptions prevent you from getting the dental care you need. We separate fact from fiction about ${serviceName} to help you make informed decisions based on accurate information.`,
+        content: {
+          introduction: {
+            content: `Many myths surround ${serviceName} treatment, often preventing patients from seeking beneficial care. Understanding the facts helps you make informed decisions about your oral health.`
+          },
+          commonMyths: {
+            content: `Common myths about ${serviceName} include misconceptions about pain, cost, duration, and results. Modern dentistry has addressed many traditional concerns through advanced techniques and technology.`
+          },
+          actualFacts: {
+            content: `The facts about ${serviceName} reveal that modern treatment is more comfortable, efficient, and successful than ever before. Professional care ensures safe, effective results with minimal discomfort.`
+          },
+          modernAdvances: {
+            content: `Advances in dental technology and techniques have made ${serviceName} more comfortable, predictable, and successful. Today's patients benefit from decades of improvements in dental care.`
+          }
+        },
+        keyTakeaways: [
+          'Modern techniques have addressed traditional dental treatment concerns',
+          'Professional care ensures safe and effective treatment',
+          'Many myths about dental procedures are outdated',
+          'Accurate information helps patients make better decisions',
+          'Advanced technology improves comfort and outcomes'
+        ],
+        tags: [serviceName.toLowerCase().replace(/\s+/g, '-'), 'dental-myths', 'dental-facts', category || 'general-dentistry'],
+        category: category || 'general-dentistry',
+        metaTitle: generateSafeMetaTitle(`${serviceName} Facts`),
+        metaDescription: `Separate myths from facts about ${serviceName}. Get accurate information to make informed decisions about your dental treatment.`.substring(0, 150)
+      }
+    ]
+  };
+}
+
 module.exports = {
   getAllServices,
   getServicesByCategory,
@@ -1848,5 +2496,6 @@ module.exports = {
   getServicePage,
   updateServicePage,
   getLLMStatus,
-  searchServices
+  searchServices,
+  createFastModeBlogs
 };

@@ -646,6 +646,455 @@ class LLMService {
       entries: Array.from(this.cache.keys())
     };
   }
+
+  /**
+   * Generate multiple blogs for a service automatically
+   * @param {Object} serviceData - Service information
+   * @param {Object} options - Generation options
+   * @returns {Promise<Object>} Array of generated blogs
+   */
+  async generateServiceBlogs(serviceData, options = {}) {
+    const {
+      websiteName = 'Our Practice',
+      doctorName = 'Dr. Professional',
+      blogCount = 6,
+      autoPublish = false,
+      ...generateOptions
+    } = options;
+
+    const blogTypes = [
+      { type: 'comprehensive', title: `Complete Guide to ${serviceData.serviceName}` },
+      { type: 'benefits', title: `Benefits of ${serviceData.serviceName}` },
+      { type: 'procedure', title: `${serviceData.serviceName} Procedure: What to Expect` },
+      { type: 'recovery', title: `Recovery and Aftercare for ${serviceData.serviceName}` },
+      { type: 'cost', title: `${serviceData.serviceName} Cost: Investment in Your Health` },
+      { type: 'myths', title: `${serviceData.serviceName}: Myths vs Facts` }
+    ];
+
+    const results = [];
+
+    try {
+      // Generate blogs sequentially to respect rate limits
+      for (let i = 0; i < Math.min(blogCount, blogTypes.length); i++) {
+        const blogType = blogTypes[i];
+
+        console.log(`🎨 Generating blog ${i + 1}/${blogCount}: ${blogType.type} for ${serviceData.serviceName}`);
+
+        try {
+          const blogResult = await this.generateSingleBlogContent(serviceData.serviceName, blogType.type, {
+            websiteName,
+            doctorName,
+            category: serviceData.category,
+            keywords: serviceData.keywords || [],
+            customTitle: blogType.title,
+            ...generateOptions
+          });
+
+          if (blogResult.success) {
+            results.push({
+              type: blogType.type,
+              title: blogType.title,
+              content: blogResult.content,
+              metadata: blogResult.metadata,
+              success: true
+            });
+            console.log(`✅ Blog generated: ${blogType.title}`);
+          } else {
+            results.push({
+              type: blogType.type,
+              title: blogType.title,
+              success: false,
+              error: blogResult.error
+            });
+            console.log(`❌ Blog generation failed: ${blogType.title}`);
+          }
+        } catch (error) {
+          results.push({
+            type: blogType.type,
+            title: blogType.title,
+            success: false,
+            error: error.message
+          });
+          console.log(`❌ Blog generation error: ${blogType.title} - ${error.message}`);
+        }
+
+        // Add delay between blog generations
+        if (i < Math.min(blogCount, blogTypes.length) - 1) {
+          console.log('⏳ Waiting 3 seconds before next blog...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+
+      const successfulBlogs = results.filter(r => r.success);
+      const totalTokensUsed = successfulBlogs.reduce((sum, r) => sum + (r.metadata?.tokensUsed || 0), 0);
+
+      console.log(`Blog generation completed: ${successfulBlogs.length}/${blogCount} successful, ${totalTokensUsed} tokens used`);
+
+      return {
+        success: true,
+        blogs: results,
+        statistics: {
+          total: blogCount,
+          successful: successfulBlogs.length,
+          failed: results.length - successfulBlogs.length,
+          totalTokensUsed
+        }
+      };
+
+    } catch (error) {
+      console.error('Service blogs generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        blogs: results
+      };
+    }
+  }
+
+  /**
+   * Generate single blog content following Clove Dental format
+   * @param {string} serviceName - Service name
+   * @param {string} blogType - Type of blog (comprehensive, benefits, etc.)
+   * @param {Object} options - Generation options
+   * @returns {Promise<Object>} Generated blog content
+   */
+  async generateSingleBlogContent(serviceName, blogType, options = {}) {
+    const {
+      websiteName = 'Our Practice',
+      doctorName = 'Dr. Professional',
+      category = 'general-dentistry',
+      keywords = [],
+      customTitle = null,
+      ...generateOptions
+    } = options;
+
+    try {
+      const blogPrompts = this.getBlogPrompts(serviceName, blogType, websiteName, doctorName, category, keywords, customTitle);
+
+      const results = {};
+
+      // Generate each section following Clove Dental structure
+      const sections = Object.keys(blogPrompts);
+
+      for (const [index, sectionKey] of sections.entries()) {
+        console.log(`Generating ${sectionKey} for ${serviceName} blog (${blogType})`);
+
+        try {
+          const result = await this.generateContent(blogPrompts[sectionKey], {
+            maxTokens: sectionKey === 'faq' ? 2000 : 800,
+            temperature: 0.7,
+            ...generateOptions
+          });
+
+          if (result.content) {
+            results[sectionKey] = {
+              content: result.content,
+              tokensUsed: result.tokensUsed || 0
+            };
+          }
+        } catch (error) {
+          console.error(`Failed to generate ${sectionKey}:`, error.message);
+          results[sectionKey] = { error: error.message };
+        }
+
+        // Small delay between sections
+        if (index < sections.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      // Structure the blog content
+      const blogContent = this.structureBlogContent(results, serviceName, blogType);
+      const totalTokensUsed = Object.values(results).reduce((sum, r) => sum + (r.tokensUsed || 0), 0);
+
+      return {
+        success: true,
+        content: blogContent,
+        metadata: {
+          type: blogType,
+          tokensUsed: totalTokensUsed,
+          sectionsGenerated: Object.keys(results).filter(k => !results[k].error).length,
+          totalSections: sections.length
+        }
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get blog prompts based on Clove Dental format analysis
+   * @param {string} serviceName - Service name
+   * @param {string} blogType - Blog type
+   * @param {string} websiteName - Website name
+   * @param {string} doctorName - Doctor name
+   * @param {string} category - Service category
+   * @param {Array} keywords - SEO keywords
+   * @param {string} customTitle - Custom blog title
+   * @returns {Object} Blog section prompts
+   */
+  getBlogPrompts(serviceName, blogType, websiteName, doctorName, category, keywords, customTitle) {
+    const keywordString = keywords.join(', ');
+
+    const basePrompts = {
+      // 1. Introduction - Hook addressing patient anxieties
+      introduction: `Write an engaging blog introduction for "${serviceName}" following Clove Dental's style.
+
+      Start with a rhetorical question that mirrors patient fears (e.g., "Does ${serviceName} hurt?").
+      Acknowledge legitimate concerns, then provide immediate reassurance.
+      Use conversational yet authoritative tone.
+      Include ${websiteName} and ${doctorName} naturally.
+      End with a preview of what the article will cover.
+      Target: 300-400 words.
+      Keywords: ${keywordString}`,
+
+      // 2. What is this treatment? - Educational foundation
+      whatIsIt: `Explain "${serviceName}" in simple, patient-friendly terms following Clove Dental's educational approach.
+
+      Cover:
+      - Basic definition in non-technical language
+      - When and why it's recommended
+      - How it differs from similar treatments
+      - Modern techniques used at ${websiteName}
+
+      Use affirming language and avoid dental jargon.
+      Target: 400-500 words.`,
+
+      // 3. Why need this treatment? - Problem-solution framework
+      whyNeedIt: `Explain why patients need "${serviceName}" using Clove Dental's problem-solution approach.
+
+      Structure:
+      - Common dental problems that require this treatment
+      - How these problems develop and progress
+      - Why early intervention matters
+      - What ${doctorName} looks for during evaluation
+
+      Use empathetic tone addressing patient concerns.
+      Target: 400-500 words.`,
+
+      // 4. Signs and symptoms - Recognition and validation
+      signsSymptoms: `Describe signs and symptoms indicating need for "${serviceName}" following Clove Dental's validation approach.
+
+      Cover:
+      - Early warning signs patients notice
+      - Progressive symptoms that worsen over time
+      - When symptoms require immediate attention
+      - How ${websiteName} evaluates these symptoms
+
+      Validate patient experiences and encourage seeking help.
+      Target: 400-500 words.`,
+
+      // 5. Consequences of delay - Motivational urgency
+      consequencesDelay: `Explain consequences of delaying "${serviceName}" using Clove Dental's motivational approach.
+
+      Address:
+      - How problems worsen without treatment
+      - Increased complexity and cost over time
+      - Impact on overall oral health
+      - Quality of life effects
+      - Why ${doctorName} recommends timely treatment
+
+      Balance urgency with reassurance.
+      Target: 300-400 words.`,
+
+      // 6. Treatment process - Procedural transparency
+      treatmentProcess: `Describe the "${serviceName}" procedure following Clove Dental's transparency approach.
+
+      Break down:
+      - Pre-treatment consultation at ${websiteName}
+      - Step-by-step procedure explanation
+      - Modern techniques and technology used
+      - Comfort measures and pain management
+      - What patients experience during treatment
+
+      Emphasize ${doctorName}'s expertise and patient care.
+      Target: 500-600 words.`,
+
+      // 7. Benefits - Positive outcomes focus
+      benefits: `Highlight benefits of "${serviceName}" using Clove Dental's positive outcomes approach.
+
+      Cover:
+      - Immediate improvements patients notice
+      - Long-term oral health benefits
+      - Functional improvements (eating, speaking)
+      - Aesthetic enhancements
+      - Quality of life improvements
+      - Success stories from ${websiteName}
+
+      Use affirmative, encouraging language.
+      Target: 400-500 words.`,
+
+      // 8. Recovery and aftercare - Practical guidance
+      recoveryAftercare: `Provide recovery and aftercare guidance for "${serviceName}" following Clove Dental's practical approach.
+
+      Include:
+      - What to expect immediately after treatment
+      - Day-by-day recovery timeline
+      - Pain management strategies
+      - Diet and activity guidelines
+      - Oral hygiene modifications
+      - When to contact ${doctorName}
+
+      Be specific and actionable.
+      Target: 400-500 words.`,
+
+      // 9. Myths vs facts - Misconception correction
+      mythsFacts: `Address common myths about "${serviceName}" following Clove Dental's myth-busting approach.
+
+      Format as Myth vs. Fact pairs:
+      - 5-6 common misconceptions patients have
+      - Clear, factual corrections for each myth
+      - Why these myths persist
+      - What modern ${serviceName} actually involves at ${websiteName}
+
+      Use "Myth:" and "Fact:" format for clarity.
+      Target: 500-600 words.`,
+
+      // 10. Cost considerations - Value-focused discussion
+      costConsiderations: `Discuss cost considerations for "${serviceName}" following Clove Dental's value approach.
+
+      Address:
+      - Factors that affect treatment cost
+      - Value of investing in oral health
+      - Comparison with cost of not treating
+      - Insurance and payment options at ${websiteName}
+      - Why quality care is worth the investment
+
+      Focus on value rather than specific prices.
+      Target: 300-400 words.`,
+
+      // 11. FAQ - Patient-focused Q&A
+      faq: `Create a comprehensive FAQ section for "${serviceName}" following Clove Dental's patient-focused approach.
+
+      Generate 15-20 questions covering:
+      - Procedure details and experience
+      - Pain and discomfort concerns
+      - Recovery and healing
+      - Cost and insurance
+      - Results and expectations
+      - Comparison with alternatives
+
+      Questions should mirror actual patient searches.
+      Answers should be 50-100 words each, empathetic and informative.
+      Include ${websiteName} and ${doctorName} references naturally.`
+    };
+
+    // Customize prompts based on blog type
+    if (blogType === 'benefits') {
+      // Focus more on benefits and outcomes
+      return {
+        introduction: basePrompts.introduction.replace('Start with a rhetorical question', 'Start with the positive outcomes patients achieve'),
+        benefits: basePrompts.benefits,
+        whatIsIt: basePrompts.whatIsIt,
+        treatmentProcess: basePrompts.treatmentProcess,
+        recoveryAftercare: basePrompts.recoveryAftercare,
+        faq: basePrompts.faq
+      };
+    } else if (blogType === 'procedure') {
+      // Focus on procedure details
+      return {
+        introduction: basePrompts.introduction,
+        whatIsIt: basePrompts.whatIsIt,
+        treatmentProcess: basePrompts.treatmentProcess,
+        recoveryAftercare: basePrompts.recoveryAftercare,
+        mythsFacts: basePrompts.mythsFacts,
+        faq: basePrompts.faq
+      };
+    } else if (blogType === 'recovery') {
+      // Focus on recovery and aftercare
+      return {
+        introduction: basePrompts.introduction,
+        treatmentProcess: basePrompts.treatmentProcess,
+        recoveryAftercare: basePrompts.recoveryAftercare,
+        benefits: basePrompts.benefits,
+        faq: basePrompts.faq
+      };
+    } else if (blogType === 'cost') {
+      // Focus on value and investment
+      return {
+        introduction: basePrompts.introduction,
+        benefits: basePrompts.benefits,
+        costConsiderations: basePrompts.costConsiderations,
+        consequencesDelay: basePrompts.consequencesDelay,
+        faq: basePrompts.faq
+      };
+    } else if (blogType === 'myths') {
+      // Focus on myth-busting
+      return {
+        introduction: basePrompts.introduction,
+        mythsFacts: basePrompts.mythsFacts,
+        whatIsIt: basePrompts.whatIsIt,
+        benefits: basePrompts.benefits,
+        faq: basePrompts.faq
+      };
+    } else {
+      // Comprehensive - all sections
+      return basePrompts;
+    }
+  }
+
+  /**
+   * Structure blog content into final format
+   * @param {Object} results - Generated section results
+   * @param {string} serviceName - Service name
+   * @param {string} blogType - Blog type
+   * @returns {Object} Structured blog content
+   */
+  structureBlogContent(results, serviceName, blogType) {
+    const content = {
+      introduction: results.introduction?.content || `Complete guide to ${serviceName}`,
+      sections: [],
+      faq: [],
+      keyTakeaways: []
+    };
+
+    // Map sections to blog structure
+    const sectionMapping = {
+      whatIsIt: { title: `What is ${serviceName}?`, level: 2 },
+      whyNeedIt: { title: `Why Do You Need ${serviceName}?`, level: 2 },
+      signsSymptoms: { title: 'Signs and Symptoms', level: 2 },
+      consequencesDelay: { title: 'What Happens If Treatment Is Delayed?', level: 2 },
+      treatmentProcess: { title: `${serviceName} Procedure: Step by Step`, level: 2 },
+      benefits: { title: `Benefits of ${serviceName}`, level: 2 },
+      recoveryAftercare: { title: 'Recovery and Aftercare', level: 2 },
+      mythsFacts: { title: `${serviceName}: Myths vs Facts`, level: 2 },
+      costConsiderations: { title: 'Cost Considerations', level: 2 }
+    };
+
+    // Add main content sections
+    Object.keys(sectionMapping).forEach(key => {
+      if (results[key] && results[key].content) {
+        const mapping = sectionMapping[key];
+        content.sections.push({
+          heading: mapping.title,
+          content: results[key].content,
+          level: mapping.level,
+          anchor: key.toLowerCase().replace(/([A-Z])/g, '-$1').toLowerCase()
+        });
+      }
+    });
+
+    // Process FAQ section
+    if (results.faq && results.faq.content) {
+      const faqContent = results.faq.content;
+      content.faq = this.parseFAQContent(faqContent);
+    }
+
+    // Generate key takeaways
+    content.keyTakeaways = [
+      `${serviceName} is a safe and effective treatment when performed by qualified professionals`,
+      'Modern techniques significantly reduce discomfort and improve outcomes',
+      'Early treatment prevents more complex problems and reduces overall costs',
+      'Proper aftercare ensures optimal healing and long-term success',
+      'Regular dental checkups help identify issues before they become serious'
+    ];
+
+    return content;
+  }
 }
 
 // Export singleton instance

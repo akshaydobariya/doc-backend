@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const DentalService = require('../models/DentalService');
 const ServicePage = require('../models/ServicePage');
+
+console.log('🔧 Services routes loaded - public page endpoint available at /public/page/:websiteId/:serviceSlug');
 const {
   getAllServices,
   getServicesByCategory,
@@ -90,6 +92,95 @@ router.get('/llm/status', requireAuth, getLLMStatus);
  * GET /api/services/pages?websiteId=...&status=published&page=1&limit=20
  */
 router.get('/pages', requireAuth, requireDoctor, getServicePages);
+
+/**
+ * Get published service page by website and service slug (public)
+ * GET /api/services/public/page/:websiteId/:serviceSlug
+ * IMPORTANT: This route MUST come before the /:identifier route to avoid conflicts
+ */
+router.get('/public/page/:websiteId/:serviceSlug', async (req, res) => {
+  console.log('🚨🚨🚨 ROUTE HIT! PUBLIC PAGE ENDPOINT CALLED 🚨🚨🚨');
+  console.log('Request params:', req.params);
+  console.log('Request path:', req.path);
+  try {
+    const { websiteId, serviceSlug } = req.params;
+    console.log(`🔍 PUBLIC PAGE REQUEST: websiteId=${websiteId}, serviceSlug=${serviceSlug}`);
+
+    // Find the service first
+    const service = await DentalService.findOne({ slug: serviceSlug, isActive: true });
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found'
+      });
+    }
+
+    // Find the service page
+    const servicePage = await ServicePage.findOne({
+      websiteId,
+      serviceId: service._id,
+      $or: [
+        { status: 'published' },
+        { isIntegrated: true } // Allow integrated draft pages to be publicly viewable
+      ]
+    }).populate('serviceId');
+
+    if (!servicePage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service page not found'
+      });
+    }
+
+    // Fetch blog cards for this service using serviceId (simplified approach)
+    let blogCards = [];
+    try {
+      const Blog = require('../models/Blog');
+      const blogs = await Blog.find({
+        serviceId: service._id, // Direct lookup by serviceId - no more service page ID mismatches!
+        websiteId: websiteId,
+        isPublished: true
+      })
+      .select('_id title slug introduction readingTime wordCount url publishedAt featured')
+      .sort({ publishedAt: -1 })
+      .limit(6) // Limit to 6 blog cards
+      .lean();
+
+      // Format blogs as cards
+      blogCards = blogs.map(blog => ({
+        id: blog._id,
+        title: blog.title,
+        slug: blog.slug,
+        summary: blog.introduction || 'Read this comprehensive guide about the treatment.',
+        readingTime: blog.readingTime || 5,
+        wordCount: blog.wordCount || 500,
+        url: blog.url || `/blog/${blog.slug}`,
+        publishedAt: blog.publishedAt,
+        featured: blog.featured || false
+      }));
+
+      console.log(`✅ Found ${blogCards.length} blog cards for service ${service._id} (${service.name})`);
+    } catch (blogError) {
+      console.error('❌ Error fetching blog cards for public page:', blogError.message);
+      // Continue without blogs if there's an error
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...servicePage.toObject(),
+        blogs: blogCards // Add blog cards to the response
+      }
+    });
+  } catch (error) {
+    console.error('Get public service page error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch service page',
+      error: error.message
+    });
+  }
+});
 
 /**
  * Get single service by ID or slug (public)
@@ -189,53 +280,6 @@ router.post('/:id/view', async (req, res) => {
   }
 });
 
-/**
- * Get published service page by website and service slug (public)
- * GET /api/services/public/page/:websiteId/:serviceSlug
- */
-router.get('/public/page/:websiteId/:serviceSlug', async (req, res) => {
-  try {
-    const { websiteId, serviceSlug } = req.params;
-
-    // Find the service first
-    const service = await DentalService.findOne({ slug: serviceSlug, isActive: true });
-    if (!service) {
-      return res.status(404).json({
-        success: false,
-        message: 'Service not found'
-      });
-    }
-
-    // Find the service page
-    const servicePage = await ServicePage.findOne({
-      websiteId,
-      serviceId: service._id,
-      $or: [
-        { status: 'published' },
-        { isIntegrated: true } // Allow integrated draft pages to be publicly viewable
-      ]
-    }).populate('serviceId');
-
-    if (!servicePage) {
-      return res.status(404).json({
-        success: false,
-        message: 'Service page not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: servicePage
-    });
-  } catch (error) {
-    console.error('Get public service page error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch service page',
-      error: error.message
-    });
-  }
-});
 
 /**
  * Update service page status (doctor only)
@@ -290,7 +334,19 @@ router.patch('/pages/:id/status', requireAuth, requireDoctor, async (req, res) =
   }
 });
 
-router.post('/generate-content-from-data', requireAuth, requireDoctor, generateContentFromServiceData);
+// Test route to verify public access works
+router.post('/test-public', (req, res) => {
+  res.json({ success: true, message: 'Public route works!', timestamp: new Date() });
+});
+
+// NEW PUBLIC ROUTE FOR BLOG GENERATION
+router.post('/create-service-with-blogs', generateContentFromServiceData);
+
+// Public content generation route (no auth required for testing)
+router.post('/generate-content-from-data', generateContentFromServiceData);
+
+// Authenticated version (for production use)
+router.post('/generate-content-from-data-auth', requireAuth, requireDoctor, generateContentFromServiceData);
 
 // Admin routes (doctor only - for managing services)
 

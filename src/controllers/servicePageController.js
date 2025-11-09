@@ -1,5 +1,4 @@
 const ServicePage = require('../models/ServicePage');
-const DentalService = require('../models/DentalService');
 const Website = require('../models/Website');
 const { validationResult } = require('express-validator');
 const staticSiteGenerator = require('../services/staticSiteGenerator');
@@ -502,6 +501,39 @@ class ServicePageController {
       const currentVersionData = servicePage.getCurrentVersionData();
       const editingCapabilities = servicePage.getEditingCapabilities();
 
+      // Fetch blog cards for this service page
+      let blogCards = [];
+      try {
+        const Blog = require('../models/Blog');
+        const blogs = await Blog.find({
+          serviceId: servicePage.serviceId._id,
+          websiteId: servicePage.websiteId._id,
+          isPublished: true
+        })
+        .select('_id title slug introduction readingTime wordCount url publishedAt featured')
+        .sort({ publishedAt: -1 })
+        .limit(6) // Limit to 6 blog cards
+        .lean();
+
+        // Format blogs as cards
+        blogCards = blogs.map(blog => ({
+          id: blog._id,
+          title: blog.title,
+          slug: blog.slug,
+          summary: blog.introduction || 'Read this comprehensive guide about the treatment.',
+          readingTime: blog.readingTime || 5,
+          wordCount: blog.wordCount || 500,
+          url: blog.url || `/blog/${blog.slug}`,
+          publishedAt: blog.publishedAt,
+          featured: blog.featured || false
+        }));
+
+        console.log(`✅ Found ${blogCards.length} blog cards for service page editing: ${servicePage.serviceId?.name}`);
+      } catch (blogError) {
+        console.error('❌ Error fetching blog cards for service page editing:', blogError.message);
+        // Continue without blogs if there's an error
+      }
+
       res.json({
         success: true,
         data: {
@@ -509,7 +541,8 @@ class ServicePageController {
           currentVersionData,
           editingCapabilities,
           websiteSettings: servicePage.websiteId?.globalSettings || {},
-          serviceInfo: servicePage.serviceId || {}
+          serviceInfo: servicePage.serviceId || {},
+          blogs: blogCards // Add blog cards to the response
         }
       });
     } catch (error) {

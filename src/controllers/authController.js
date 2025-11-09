@@ -99,7 +99,7 @@ exports.googleCallback = async (req, res) => {
       calendarConnected: user.calendarConnected
     };
 
-    console.log('Session set:', { userId: user._id, role: user.role, sessionID: req.sessionID });
+    // Session created successfully
 
     // For doctors: Auto-setup webhook and sync calendar on first login
     if (user.role === 'doctor') {
@@ -134,11 +134,11 @@ exports.googleCallback = async (req, res) => {
             }
           });
           await availability.save();
-          console.log('Default availability created for new doctor:', user.email);
+          // Default availability created
         }
 
         // Auto-sync calendar (setup webhook)
-        console.log('Auto-syncing calendar for doctor:', user.email);
+        // Auto-syncing calendar
         req.user = user; // Set req.user for calendarController
         await calendarController.syncCalendar(req, {
           json: () => {},
@@ -147,7 +147,7 @@ exports.googleCallback = async (req, res) => {
 
         user.calendarConnected = true;
         await user.save();
-        console.log('Calendar synced and webhook setup completed for:', user.email);
+        // Calendar sync completed
       } catch (syncError) {
         console.error('Auto-sync error (non-blocking):', syncError.message);
         // Don't fail login if sync fails
@@ -161,8 +161,7 @@ exports.googleCallback = async (req, res) => {
         return res.status(500).json({ message: 'Failed to save session' });
       }
 
-      console.log('Session saved successfully, sessionID:', req.sessionID);
-      console.log('Cookie being sent:', req.session.cookie);
+      // Session saved successfully
 
       // Ensure CORS headers are set for cookie
       res.header('Access-Control-Allow-Credentials', 'true');
@@ -197,12 +196,10 @@ exports.googleCallback = async (req, res) => {
 };
 
 exports.getCurrentUser = async (req, res) => {
-  console.log('getCurrentUser called - Session ID:', req.sessionID);
-  console.log('getCurrentUser - Session data:', req.session);
-  console.log('getCurrentUser - User from session:', req.session.user);
+  // Getting current user from session
 
   if (!req.session.user) {
-    console.log('No user in session - returning 401');
+    // No user in session
     return res.status(401).json({ message: 'Not authenticated' });
   }
 
@@ -210,11 +207,11 @@ exports.getCurrentUser = async (req, res) => {
     // Get fresh user data from database to ensure up-to-date info
     const user = await User.findById(req.session.user.id);
     if (!user) {
-      console.log('User not found in database:', req.session.user.id);
+      // User not found in database
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('User found:', user.email);
+    // User found successfully
 
     // Update session with fresh data
     req.session.user = {
