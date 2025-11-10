@@ -672,7 +672,7 @@ const servicePageSchema = new mongoose.Schema({
     },
     generatedBy: {
       type: String,
-      enum: ['google-ai', 'deepseek', 'manual', 'template'],
+      enum: ['google-ai', 'manual', 'template'],
       default: 'manual'
     },
     promptUsed: {
@@ -1227,255 +1227,521 @@ servicePageSchema.methods.getDefaultTitle = function(section) {
   return titles[section] || 'Information';
 };
 
-// Helper method to parse bullet points from LLM content
+// Helper method to parse bullet points from LLM content (Updated for new 500-word, 5-bullet format)
 servicePageSchema.methods.parseBulletPoints = function(content) {
   const bulletPoints = [];
 
   try {
-    // Split content by bullet points or numbered lists
-    const lines = content.split(/[\n\r]+/);
-    let currentPoint = null;
+    // Updated parsing for new format: 5 bullet points, 100 words each
+    // First try to match the exact format from our LLM prompts
+    const bulletRegex = /•\s*(?:Point|Reason|Symptom|Consequence|Care Point|Benefit|Side Effect)\s*\d+:\s*(.*?)(?=•\s*(?:Point|Reason|Symptom|Consequence|Care Point|Benefit|Side Effect)\s*\d+:|$)/gs;
+    let matches = [...content.matchAll(bulletRegex)];
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-
-      // Check if line starts with bullet point or number
-      if (trimmedLine.match(/^[•\-\*]\s+/) || trimmedLine.match(/^\d+\.\s+/)) {
-        // Save previous point if exists
-        if (currentPoint) {
-          bulletPoints.push(currentPoint);
-        }
-
-        // Start new point
-        const titleMatch = trimmedLine.match(/^[•\-\*\d\.\s]*(.+?):\s*(.*)/) ||
-                          trimmedLine.match(/^[•\-\*\d\.\s]*(.{1,150}?)\s*-\s*(.*)/) ||
-                          trimmedLine.match(/^[•\-\*\d\.\s]*(.+)/);
-
-        if (titleMatch) {
-          currentPoint = {
-            title: this.cleanContent(titleMatch[1] || titleMatch[0]).substring(0, 60), // Super aggressive: 60 for 100 limit
-            content: this.cleanContent(titleMatch[2] || '').substring(0, 200) // Super aggressive: 200 for 300 limit
-          };
-        }
-      } else if (currentPoint && trimmedLine) {
-        // Add to current point content with super aggressive limit
-        const additionalContent = (currentPoint.content ? ' ' : '') + this.cleanContent(trimmedLine);
-        if (currentPoint.content.length + additionalContent.length <= 200) { // Super aggressive: 200 for 300 limit
-          currentPoint.content += additionalContent;
-        }
-      }
-    }
-
-    // Add last point
-    if (currentPoint) {
-      bulletPoints.push(currentPoint);
-    }
-
-    // Ensure we have exactly 5 bullet points by splitting or combining if needed
-    while (bulletPoints.length < 5 && bulletPoints.length > 0) {
-      const longestPoint = bulletPoints.reduce((longest, current) =>
-        current.content.length > longest.content.length ? current : longest
-      );
-
-      const splitIndex = bulletPoints.indexOf(longestPoint);
-      const splitContent = longestPoint.content;
-      const midPoint = Math.floor(splitContent.length / 2);
-      const splitAt = splitContent.indexOf(' ', midPoint);
-
-      if (splitAt > 0) {
-        bulletPoints[splitIndex] = {
-          title: longestPoint.title + ' (Part 1)',
-          content: splitContent.substring(0, splitAt).trim()
-        };
-        bulletPoints.splice(splitIndex + 1, 0, {
-          title: longestPoint.title + ' (Part 2)',
-          content: splitContent.substring(splitAt).trim()
+    let pointNumber = 1;
+    for (const match of matches) {
+      const pointContent = match[1].trim();
+      if (pointContent) {
+        bulletPoints.push({
+          title: `Point ${pointNumber}`, // Auto-generated title for SEO
+          content: this.cleanContent(pointContent),
+          wordCount: this.countWords(pointContent)
         });
-      } else {
-        break;
+        pointNumber++;
       }
     }
 
-    // Ensure exactly 5 points and force truncation for safety
-    const finalPoints = bulletPoints.slice(0, 5).map(point => ({
-      title: this.cleanContent(point.title || '').substring(0, 60), // Force 60 chars max
-      content: this.cleanContent(point.content || '').substring(0, 200) // Force 200 chars max
-    }));
+    // Fallback: If the above pattern doesn't match, try standard bullet points
+    if (bulletPoints.length === 0) {
+      const lines = content.split(/[\n\r]+/);
+      let currentPoint = null;
 
-    // Fill to exactly 5 if needed
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        // Check if line starts with bullet point or number
+        if (trimmedLine.match(/^[•\-\*]\s+/) || trimmedLine.match(/^\d+\.\s+/)) {
+          // Save previous point if exists
+          if (currentPoint) {
+            bulletPoints.push(currentPoint);
+          }
+
+          // Start new point - extract full content (100 words per bullet point)
+          const contentMatch = trimmedLine.replace(/^[•\-\*\d\.\s]+/, '');
+          currentPoint = {
+            title: `Point ${bulletPoints.length + 1}`, // SEO-friendly auto title
+            content: this.cleanContent(contentMatch),
+            wordCount: this.countWords(contentMatch)
+          };
+        } else if (currentPoint && trimmedLine) {
+          // Add to current point content (allowing up to ~100 words per bullet)
+          currentPoint.content += ' ' + this.cleanContent(trimmedLine);
+          currentPoint.wordCount = this.countWords(currentPoint.content);
+        }
+      }
+
+      // Add last point
+      if (currentPoint) {
+        bulletPoints.push(currentPoint);
+      }
+    }
+
+    // Third fallback: If still no structured content, try to split by paragraph/sentences
+    if (bulletPoints.length === 0 && content.length > 0) {
+      const paragraphs = content.split(/\n\s*\n/);
+      const totalWords = this.countWords(content);
+      const wordsPerPoint = Math.ceil(totalWords / 5);
+
+      let currentWords = 0;
+      let currentContent = '';
+      let pointCount = 0;
+
+      for (const paragraph of paragraphs) {
+        const paragraphWords = this.countWords(paragraph);
+
+        if (currentWords + paragraphWords <= wordsPerPoint || pointCount === 4) {
+          currentContent += (currentContent ? ' ' : '') + paragraph.trim();
+          currentWords += paragraphWords;
+        } else {
+          // Save current point
+          if (currentContent) {
+            bulletPoints.push({
+              title: `Point ${pointCount + 1}`,
+              content: this.cleanContent(currentContent),
+              wordCount: currentWords
+            });
+            pointCount++;
+          }
+
+          // Start new point
+          currentContent = paragraph.trim();
+          currentWords = paragraphWords;
+        }
+      }
+
+      // Add last point
+      if (currentContent && pointCount < 5) {
+        bulletPoints.push({
+          title: `Point ${pointCount + 1}`,
+          content: this.cleanContent(currentContent),
+          wordCount: currentWords
+        });
+      }
+    }
+
+    // Ensure exactly 5 points for consistency
+    const finalPoints = bulletPoints.slice(0, 5);
+
+    // Fill to exactly 5 if needed with default content
     while (finalPoints.length < 5) {
       finalPoints.push({
-        title: `Benefit ${finalPoints.length + 1}`,
-        content: 'Additional benefit information available during consultation.'
+        title: `Important Point ${finalPoints.length + 1}`,
+        content: 'Additional information about this treatment is available during your consultation. Our dental professionals will provide detailed explanations tailored to your specific needs and circumstances.',
+        wordCount: 25
       });
     }
 
-    return finalPoints;
+    return finalPoints.map(point => ({
+      title: point.title || `Point ${finalPoints.indexOf(point) + 1}`,
+      content: point.content || 'Information available during consultation.',
+      wordCount: point.wordCount || this.countWords(point.content)
+    }));
+
   } catch (error) {
     console.error('Error parsing bullet points:', error);
+    // Return default 5 bullet points with patient-friendly content
     return Array(5).fill().map((_, i) => ({
-      title: `Benefit ${i + 1}`,
-      content: 'Content available during consultation.'
+      title: `Important Information ${i + 1}`,
+      content: 'Detailed information about this aspect of the treatment will be discussed during your consultation with our dental professionals.',
+      wordCount: 20
     }));
   }
 };
 
-// Helper method to parse procedure steps
+// Helper method to parse procedure steps (Updated for new 500-word, 5-step format)
 servicePageSchema.methods.parseSteps = function(content) {
   const steps = [];
 
   try {
-    const lines = content.split(/[\n\r]+/);
-    let stepNumber = 1;
+    // Updated parsing for new format: 5 steps, 100 words each
+    // First try to match the exact format from our LLM prompts
+    const stepRegex = /Step\s*(\d+):\s*(.*?)(?=Step\s*\d+:|$)/gs;
+    let matches = [...content.matchAll(stepRegex)];
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
+    for (const match of matches) {
+      const stepNumber = parseInt(match[1]);
+      const stepContent = match[2].trim();
 
-      // Look for numbered steps
-      const stepMatch = trimmedLine.match(/^(\d+)\.\s*(.+?):\s*(.*)/) ||
-                       trimmedLine.match(/^Step\s*(\d+)[:\-\s]*(.+?):\s*(.*)/) ||
-                       trimmedLine.match(/^(\d+)\.\s*(.+)/);
-
-      if (stepMatch) {
-        const title = stepMatch[2] || `Step ${stepNumber}`;
-        const description = stepMatch[3] || stepMatch[2] || stepMatch[0];
-
+      if (stepContent) {
         steps.push({
-          stepNumber: parseInt(stepMatch[1]) || stepNumber,
-          title: this.cleanContent(title).substring(0, 150),
-          description: this.cleanContent(description).substring(0, 500) // Schema limit is 500
+          stepNumber: stepNumber,
+          title: `Step ${stepNumber}`, // SEO-friendly title
+          description: this.cleanContent(stepContent),
+          wordCount: this.countWords(stepContent)
         });
-
-        stepNumber++;
       }
     }
 
-    // Ensure we have exactly 5 steps
-    while (steps.length < 5) {
-      steps.push({
-        stepNumber: steps.length + 1,
-        title: `Additional Step ${steps.length + 1}`,
-        description: 'Details will be provided during consultation.'
-      });
+    // Fallback: If the above pattern doesn't match, try standard numbered steps
+    if (steps.length === 0) {
+      const lines = content.split(/[\n\r]+/);
+      let currentStep = null;
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        // Look for numbered steps with various formats
+        const stepMatch = trimmedLine.match(/^(\d+)\s*[.\-:\s]*(.+)/) ||
+                         trimmedLine.match(/^Step\s*(\d+)[:\-\s]*(.+)/i);
+
+        if (stepMatch) {
+          // Save previous step if exists
+          if (currentStep) {
+            steps.push(currentStep);
+          }
+
+          // Start new step with full content (100 words per step)
+          const stepNumber = parseInt(stepMatch[1]) || steps.length + 1;
+          const stepContent = stepMatch[2] || '';
+
+          currentStep = {
+            stepNumber: stepNumber,
+            title: `Step ${stepNumber}`, // SEO-friendly title
+            description: this.cleanContent(stepContent),
+            wordCount: this.countWords(stepContent)
+          };
+        } else if (currentStep && trimmedLine) {
+          // Add to current step content (allowing up to ~100 words per step)
+          currentStep.description += ' ' + this.cleanContent(trimmedLine);
+          currentStep.wordCount = this.countWords(currentStep.description);
+        }
+      }
+
+      // Add last step
+      if (currentStep) {
+        steps.push(currentStep);
+      }
     }
 
-    // Force truncation for safety - ensure exactly 5 steps with safe limits
-    const finalSteps = steps.slice(0, 5).map(step => ({
-      stepNumber: step.stepNumber,
-      title: this.cleanContent(step.title || '').substring(0, 120), // Force 120 chars max for 150 limit
-      description: this.cleanContent(step.description || '').substring(0, 400) // Force 400 chars max for 500 limit
-    }));
+    // Third fallback: If still no structured content, try to split by paragraph/sentences
+    if (steps.length === 0 && content.length > 0) {
+      const paragraphs = content.split(/\n\s*\n/);
+      const totalWords = this.countWords(content);
+      const wordsPerStep = Math.ceil(totalWords / 5);
 
-    // Fill to exactly 5 if needed
+      let currentWords = 0;
+      let currentContent = '';
+      let stepCount = 0;
+
+      for (const paragraph of paragraphs) {
+        const paragraphWords = this.countWords(paragraph);
+
+        if (currentWords + paragraphWords <= wordsPerStep || stepCount === 4) {
+          currentContent += (currentContent ? ' ' : '') + paragraph.trim();
+          currentWords += paragraphWords;
+        } else {
+          // Save current step
+          if (currentContent) {
+            steps.push({
+              stepNumber: stepCount + 1,
+              title: `Step ${stepCount + 1}`,
+              description: this.cleanContent(currentContent),
+              wordCount: currentWords
+            });
+            stepCount++;
+          }
+
+          // Start new step
+          currentContent = paragraph.trim();
+          currentWords = paragraphWords;
+        }
+      }
+
+      // Add last step
+      if (currentContent && stepCount < 5) {
+        steps.push({
+          stepNumber: stepCount + 1,
+          title: `Step ${stepCount + 1}`,
+          description: this.cleanContent(currentContent),
+          wordCount: currentWords
+        });
+      }
+    }
+
+    // Ensure exactly 5 steps for consistency
+    const finalSteps = steps.slice(0, 5);
+
+    // Fill to exactly 5 if needed with patient-friendly content
     while (finalSteps.length < 5) {
       finalSteps.push({
         stepNumber: finalSteps.length + 1,
         title: `Step ${finalSteps.length + 1}`,
-        description: 'Details will be provided during consultation.'
+        description: 'Our dental professionals will explain this step in detail during your treatment consultation, ensuring you understand each part of the procedure.',
+        wordCount: 22
       });
     }
 
-    return finalSteps;
+    // Return properly formatted steps with enhanced descriptions
+    return finalSteps.map(step => ({
+      stepNumber: step.stepNumber || finalSteps.indexOf(step) + 1,
+      title: step.title || `Step ${step.stepNumber}`,
+      description: step.description || 'Detailed procedure information will be provided during consultation.',
+      wordCount: step.wordCount || this.countWords(step.description)
+    }));
+
   } catch (error) {
     console.error('Error parsing steps:', error);
-    return [];
+    // Return default 5 steps with patient-friendly content
+    return Array(5).fill().map((_, i) => ({
+      stepNumber: i + 1,
+      title: `Step ${i + 1}`,
+      description: 'Your dental professional will guide you through this step of the treatment process with detailed explanations and comfortable care.',
+      wordCount: 20
+    }));
   }
 };
 
-// Helper method to parse myths and facts
+// Helper method to parse myths and facts (Updated for new 500-word format: 5 myths + 5 facts, 50 words each)
 servicePageSchema.methods.parseMythsAndFacts = function(content) {
   const items = [];
 
   try {
-    const lines = content.split(/[\n\r]+/);
-    let currentMyth = null;
-    let currentFact = null;
+    // Updated parsing for new format: 5 myths and facts, 50 words each (500 words total)
+    // First try to match the exact format from our LLM prompts
+    const mythFactRegex = /Myth\s*(\d+):\s*(.*?)(?:\n|\r\n?)Fact\s*\1:\s*(.*?)(?=Myth\s*\d+:|$)/gs;
+    let matches = [...content.matchAll(mythFactRegex)];
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
+    for (const match of matches) {
+      const mythNumber = parseInt(match[1]);
+      const mythContent = match[2].trim();
+      const factContent = match[3].trim();
 
-      if (trimmedLine.match(/^Myth\s*\d*[:]*\s*/i)) {
-        if (currentMyth && currentFact) {
-          items.push({ myth: currentMyth, fact: currentFact });
-        }
-        currentMyth = trimmedLine.replace(/^Myth\s*\d*[:]*\s*/i, '');
-        currentFact = null;
-      } else if (trimmedLine.match(/^Fact\s*\d*[:]*\s*/i)) {
-        currentFact = trimmedLine.replace(/^Fact\s*\d*[:]*\s*/i, '');
-      } else if (currentMyth && !currentFact && trimmedLine) {
-        currentMyth += ' ' + trimmedLine;
-      } else if (currentFact && trimmedLine) {
-        currentFact += ' ' + trimmedLine;
+      if (mythContent && factContent) {
+        items.push({
+          mythNumber: mythNumber,
+          myth: this.cleanContent(mythContent),
+          fact: this.cleanContent(factContent),
+          mythWordCount: this.countWords(mythContent),
+          factWordCount: this.countWords(factContent)
+        });
       }
     }
 
-    // Add last pair
-    if (currentMyth && currentFact) {
-      items.push({ myth: currentMyth, fact: currentFact });
+    // Fallback: If the above pattern doesn't match, try standard myth/fact format
+    if (items.length === 0) {
+      const lines = content.split(/[\n\r]+/);
+      let currentMyth = null;
+      let currentFact = null;
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        if (trimmedLine.match(/^Myth\s*\d*[:]*\s*/i)) {
+          if (currentMyth && currentFact) {
+            items.push({
+              myth: this.cleanContent(currentMyth),
+              fact: this.cleanContent(currentFact),
+              mythWordCount: this.countWords(currentMyth),
+              factWordCount: this.countWords(currentFact)
+            });
+          }
+          currentMyth = trimmedLine.replace(/^Myth\s*\d*[:]*\s*/i, '');
+          currentFact = null;
+        } else if (trimmedLine.match(/^Fact\s*\d*[:]*\s*/i)) {
+          currentFact = trimmedLine.replace(/^Fact\s*\d*[:]*\s*/i, '');
+        } else if (currentMyth && !currentFact && trimmedLine) {
+          currentMyth += ' ' + trimmedLine;
+        } else if (currentFact && trimmedLine) {
+          currentFact += ' ' + trimmedLine;
+        }
+      }
+
+      // Add last pair
+      if (currentMyth && currentFact) {
+        items.push({
+          myth: this.cleanContent(currentMyth),
+          fact: this.cleanContent(currentFact),
+          mythWordCount: this.countWords(currentMyth),
+          factWordCount: this.countWords(currentFact)
+        });
+      }
     }
 
-    return items.slice(0, 5);
+    // Ensure exactly 5 myth-fact pairs
+    const finalItems = items.slice(0, 5);
+
+    // Fill to exactly 5 if needed with default patient-friendly content
+    while (finalItems.length < 5) {
+      const itemNumber = finalItems.length + 1;
+      finalItems.push({
+        mythNumber: itemNumber,
+        myth: `This treatment is more complicated than other dental procedures.`,
+        fact: `Modern dental techniques make this treatment comfortable and straightforward for patients.`,
+        mythWordCount: 11,
+        factWordCount: 11
+      });
+    }
+
+    return finalItems.map((item, index) => ({
+      mythNumber: item.mythNumber || index + 1,
+      myth: item.myth || `Common misconception about this treatment.`,
+      fact: item.fact || `Evidence-based information about the treatment.`,
+      mythWordCount: item.mythWordCount || this.countWords(item.myth),
+      factWordCount: item.factWordCount || this.countWords(item.fact)
+    }));
+
   } catch (error) {
     console.error('Error parsing myths and facts:', error);
-    return [];
+    // Return default 5 myth-fact pairs with patient-friendly content
+    return Array(5).fill().map((_, i) => ({
+      mythNumber: i + 1,
+      myth: `Common misconception ${i + 1} about this dental treatment.`,
+      fact: `Accurate, evidence-based information correcting the misconception about this treatment.`,
+      mythWordCount: 8,
+      factWordCount: 10
+    }));
   }
 };
 
-// Helper method to parse FAQs
+// Helper method to parse FAQs (Updated for new 25 FAQs with 100-word answers format)
 servicePageSchema.methods.parseFAQs = function(content) {
   const questions = [];
 
   try {
-    const lines = content.split(/[\n\r]+/);
-    let currentQ = null;
-    let currentA = null;
-    let questionNumber = 1;
+    // Updated parsing for new format: 25 FAQs with 100-word answers each (2500 words total)
+    // First try to match the exact format from our LLM prompts
+    const faqRegex = /Q(\d+):\s*(.*?)(?:\n|\r\n?)A\1:\s*(.*?)(?=Q\d+:|$)/gs;
+    let matches = [...content.matchAll(faqRegex)];
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
+    for (const match of matches) {
+      const questionNumber = parseInt(match[1]);
+      const questionText = match[2].trim();
+      const answerText = match[3].trim();
 
-      if (trimmedLine.match(/^Q\d*[:]*\s*/i) || trimmedLine.match(/^Question\s*\d*[:]*\s*/i)) {
-        if (currentQ && currentA) {
-          questions.push({
-            question: this.cleanContent(currentQ).substring(0, 150), // Super aggressive: 150 for 200 limit
-            answer: this.cleanContent(currentA).substring(0, 700), // Super aggressive: 700 for 1000 limit
-            category: this.categorizeFAQ(currentQ),
-            order: questionNumber++,
-            wordCount: this.countWords(currentA)
-          });
-        }
-        currentQ = this.cleanContent(trimmedLine.replace(/^(Q\d*|Question\s*\d*)[:]*\s*/i, '')).substring(0, 150);
-        currentA = null;
-      } else if (trimmedLine.match(/^A\d*[:]*\s*/i) || trimmedLine.match(/^Answer\s*\d*[:]*\s*/i)) {
-        currentA = this.cleanContent(trimmedLine.replace(/^(A\d*|Answer\s*\d*)[:]*\s*/i, '')).substring(0, 700);
-      } else if (currentQ && !currentA && trimmedLine) {
-        const additionalQ = ' ' + this.cleanContent(trimmedLine);
-        if (currentQ.length + additionalQ.length <= 150) { // Super aggressive: 150 for 200 limit
-          currentQ += additionalQ;
-        }
-      } else if (currentA && trimmedLine) {
-        const additionalA = ' ' + this.cleanContent(trimmedLine);
-        if (currentA.length + additionalA.length <= 700) { // Super aggressive: 700 for 1000 limit
-          currentA += additionalA;
-        }
+      if (questionText && answerText) {
+        questions.push({
+          questionNumber: questionNumber,
+          question: this.cleanContent(questionText),
+          answer: this.cleanContent(answerText),
+          category: this.categorizeFAQ(questionText),
+          order: questionNumber,
+          wordCount: this.countWords(answerText),
+          seoFriendly: true
+        });
       }
     }
 
-    // Add last pair
-    if (currentQ && currentA) {
-      questions.push({
-        question: this.cleanContent(currentQ).substring(0, 150), // Super aggressive: 150 for 200 limit
-        answer: this.cleanContent(currentA).substring(0, 700), // Super aggressive: 700 for 1000 limit
-        category: this.categorizeFAQ(currentQ),
-        order: questionNumber,
-        wordCount: this.countWords(currentA)
+    // Fallback: If the above pattern doesn't match, try standard Q&A format
+    if (questions.length === 0) {
+      const lines = content.split(/[\n\r]+/);
+      let currentQ = null;
+      let currentA = null;
+      let questionNumber = 1;
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        if (trimmedLine.match(/^Q\d*[:]*\s*/i) || trimmedLine.match(/^Question\s*\d*[:]*\s*/i)) {
+          if (currentQ && currentA) {
+            questions.push({
+              questionNumber: questionNumber,
+              question: this.cleanContent(currentQ),
+              answer: this.cleanContent(currentA),
+              category: this.categorizeFAQ(currentQ),
+              order: questionNumber,
+              wordCount: this.countWords(currentA),
+              seoFriendly: true
+            });
+            questionNumber++;
+          }
+          currentQ = this.cleanContent(trimmedLine.replace(/^(Q\d*|Question\s*\d*)[:]*\s*/i, ''));
+          currentA = null;
+        } else if (trimmedLine.match(/^A\d*[:]*\s*/i) || trimmedLine.match(/^Answer\s*\d*[:]*\s*/i)) {
+          currentA = this.cleanContent(trimmedLine.replace(/^(A\d*|Answer\s*\d*)[:]*\s*/i, ''));
+        } else if (currentQ && !currentA && trimmedLine) {
+          currentQ += ' ' + this.cleanContent(trimmedLine);
+        } else if (currentA && trimmedLine) {
+          currentA += ' ' + this.cleanContent(trimmedLine);
+        }
+      }
+
+      // Add last pair
+      if (currentQ && currentA) {
+        questions.push({
+          questionNumber: questionNumber,
+          question: this.cleanContent(currentQ),
+          answer: this.cleanContent(currentA),
+          category: this.categorizeFAQ(currentQ),
+          order: questionNumber,
+          wordCount: this.countWords(currentA),
+          seoFriendly: true
+        });
+      }
+    }
+
+    // Ensure exactly 25 FAQs for consistency
+    const finalQuestions = questions.slice(0, 25);
+
+    // Fill to exactly 25 if needed with default patient-friendly FAQs
+    const defaultFAQs = [
+      { q: "How long does this dental treatment take?", a: "Treatment duration varies based on your specific needs and the complexity of your case. During your consultation, our dental professionals will provide a detailed timeline tailored to your situation. Most procedures are completed efficiently while ensuring your comfort and optimal results. We'll discuss scheduling options that work best for your lifestyle and treatment requirements." },
+      { q: "Is this treatment covered by dental insurance?", a: "Insurance coverage varies by plan and provider. We recommend checking with your insurance company about your specific benefits for this treatment. Our office staff can help verify your coverage and explain any out-of-pocket costs. We also offer flexible payment options and financing plans to make quality dental care accessible and affordable for all our patients." },
+      { q: "What should I expect during the recovery period?", a: "Recovery experiences vary among patients, but most people return to normal activities within a few days. We'll provide detailed aftercare instructions to ensure smooth healing and optimal results. Our team monitors your progress and is available to answer questions throughout your recovery. Following post-treatment guidelines helps minimize discomfort and promotes faster healing." },
+      { q: "Are there any side effects I should be aware of?", a: "Like all medical procedures, this treatment may have some temporary side effects. Common experiences include mild swelling, sensitivity, or discomfort that typically resolves within a few days. Serious complications are rare with proper care and follow-up. We'll discuss potential side effects specific to your case and provide strategies to minimize any discomfort during healing." },
+      { q: "How do I know if I'm a good candidate for this treatment?", a: "Candidacy depends on various factors including your oral health, medical history, and treatment goals. During your comprehensive consultation, we'll evaluate your specific situation and discuss whether this treatment is right for you. We consider factors like bone health, gum condition, and overall dental wellness to ensure the best possible outcomes for your individual needs." }
+    ];
+
+    let questionCount = finalQuestions.length;
+    for (const defaultFAQ of defaultFAQs) {
+      if (questionCount >= 25) break;
+
+      finalQuestions.push({
+        questionNumber: questionCount + 1,
+        question: defaultFAQ.q,
+        answer: defaultFAQ.a,
+        category: this.categorizeFAQ(defaultFAQ.q),
+        order: questionCount + 1,
+        wordCount: this.countWords(defaultFAQ.a),
+        seoFriendly: true
+      });
+      questionCount++;
+    }
+
+    // Fill remaining slots with generic questions if needed
+    while (finalQuestions.length < 25) {
+      const qNum = finalQuestions.length + 1;
+      finalQuestions.push({
+        questionNumber: qNum,
+        question: `What other information should I know about this dental treatment?`,
+        answer: `Additional details about this treatment will be thoroughly discussed during your personal consultation. Our dental professionals will address all your questions and concerns, explaining every aspect of the procedure to ensure you feel confident and informed about your dental care decisions.`,
+        category: 'general',
+        order: qNum,
+        wordCount: 35,
+        seoFriendly: true
       });
     }
 
-    return questions.slice(0, 25);
+    return finalQuestions.map((faq, index) => ({
+      questionNumber: faq.questionNumber || index + 1,
+      question: faq.question || `Question ${index + 1} about this treatment?`,
+      answer: faq.answer || `Detailed information will be provided during your consultation.`,
+      category: faq.category || 'general',
+      order: faq.order || index + 1,
+      wordCount: faq.wordCount || this.countWords(faq.answer),
+      seoFriendly: faq.seoFriendly || true
+    }));
+
   } catch (error) {
     console.error('Error parsing FAQs:', error);
-    return [];
+    // Return default 25 FAQs with patient-friendly content
+    return Array(25).fill().map((_, i) => ({
+      questionNumber: i + 1,
+      question: `What should I know about this dental treatment (Question ${i + 1})?`,
+      answer: `Our dental professionals will provide comprehensive information about all aspects of this treatment during your consultation, ensuring you have everything you need to make informed decisions about your oral health care.`,
+      category: 'general',
+      order: i + 1,
+      wordCount: 28,
+      seoFriendly: true
+    }));
   }
 };
 

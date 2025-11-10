@@ -2,8 +2,8 @@ const axios = require('axios');
 
 /**
  * LLM Service for content generation
- * Supports multiple providers: Google AI Studio (Gemini), DeepSeek
- * Provides fallback mechanisms and specialized dental content generation
+ * Supports Google AI Studio (Gemini) for dental content generation
+ * Strict error handling - fails fast without fallbacks
  */
 class LLMService {
   constructor() {
@@ -14,90 +14,83 @@ class LLMService {
         model: 'gemini-2.0-flash-001',
         apiKey: process.env.GOOGLE_AI_API_KEY,
         enabled: !!process.env.GOOGLE_AI_API_KEY && process.env.GOOGLE_AI_API_KEY.startsWith('AIzaSy')
-      },
-      'deepseek': {
-        name: 'DeepSeek',
-        apiUrl: 'https://api.deepseek.com/v1/chat/completions',
-        model: 'deepseek-chat',
-        apiKey: process.env.DEEPSEEK_API_KEY,
-        enabled: !!process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_API_KEY.startsWith('sk-') && !process.env.DEEPSEEK_API_KEY.includes('1234567890')
       }
     };
 
-    // Default provider order (primary to fallback) - ONLY REAL LLM PROVIDERS
-    this.providerOrder = ['google-ai', 'deepseek'];
+    // Default provider order - Google AI only
+    this.providerOrder = ['google-ai'];
 
     // Rate limiting and caching
     this.requestCounts = new Map();
     this.cache = new Map();
     this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
 
-    // Comprehensive dental content prompts based on your detailed requirements
+    // Enhanced dental content prompts based on your specific 11-section format requirements
     this.dentalPrompts = {
-      // 1. Introduction - Simple patient terms (100 words)
+      // 1. Introduction - Simple patient terms (100 words exactly)
       introduction: {
-        system: "You are a professional dental copywriter creating patient-friendly content. Write in simple, reassuring language that patients can easily understand.",
-        user: "Write a brief introduction for {{serviceName}} in simple patient terms. Explain what it is and why patients might need it. Keep it professional but accessible, around 100 words. Target keywords: {{keywords}}."
+        system: "You are a professional dental copywriter creating patient-friendly, SEO-optimized content. Write in simple, reassuring language that patients can easily understand. Use a friendly and patient-facing tone suitable for a clinic website or brochure.",
+        user: "Write a brief introduction for {{serviceName}} in simple patient terms. Explain what it is and why patients might need it. REQUIREMENTS:\n- EXACTLY 100 words\n- Use friendly, patient-facing tone\n- SEO-friendly language\n- Professional but accessible\n- Include practice name: {{websiteName}}\n- Target keywords: {{keywords}}\n\nMake it welcoming and reassuring for potential patients visiting a dental clinic website."
       },
 
       // 2. What does it entail - Detailed explanation (500 words in 5 bullet points)
       detailedExplanation: {
-        system: "You are a dental educator. Write EXACTLY 5 bullet points only. Be extremely concise.",
-        user: "Explain what {{serviceName}} entails in EXACTLY 5 bullet points. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: procedure, techniques, technology, materials, outcomes. Keep descriptions extremely short and clear. DO NOT exceed character limits."
+        system: "You are a dental educator creating detailed yet accessible content for patients. Write in friendly, patient-facing tone suitable for clinic websites. Focus on being informative while remaining approachable.",
+        user: "Explain what {{serviceName}} entails in EXACTLY 5 detailed bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Each bullet point: comprehensive explanation\n- Friendly, patient-facing tone\n- SEO-friendly content\n- Include: procedure details, techniques, technology, materials, expected outcomes\n\nFormat as:\n• Point 1: [100 words explaining first aspect]\n• Point 2: [100 words explaining second aspect]\n• Point 3: [100 words explaining third aspect]\n• Point 4: [100 words explaining fourth aspect]\n• Point 5: [100 words explaining fifth aspect]"
       },
 
       // 3. Why does one need to undergo this treatment (500 words in 5 bullet points)
       treatmentNeed: {
-        system: "You are a dental expert. Write EXACTLY 5 reasons only. Be extremely concise.",
-        user: "List EXACTLY 5 reasons why patients need {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: health benefits, aesthetics, function, prevention, long-term health. Keep descriptions extremely short and persuasive. DO NOT exceed character limits."
+        system: "You are a dental expert explaining treatment necessity to patients in a friendly, reassuring manner. Focus on health benefits and quality of life improvements.",
+        user: "Explain why patients need {{serviceName}} in EXACTLY 5 bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Friendly, patient-facing tone for clinic websites\n- SEO-friendly content\n- Include: health benefits, functional improvements, aesthetic benefits, prevention aspects, long-term oral health\n\nFormat as:\n• Reason 1: [100 words explaining first necessity]\n• Reason 2: [100 words explaining second necessity]\n• Reason 3: [100 words explaining third necessity]\n• Reason 4: [100 words explaining fourth necessity]\n• Reason 5: [100 words explaining fifth necessity]"
       },
 
       // 4. Symptoms requiring this treatment (500 words in 5 bullet points)
       symptoms: {
-        system: "You are a dental diagnostician. Write EXACTLY 5 symptoms only. Be extremely concise.",
-        user: "List EXACTLY 5 symptoms indicating need for {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: visible signs, pain indicators, functional problems, aesthetic concerns, prevention signs. Keep descriptions extremely short and clear. DO NOT exceed character limits."
+        system: "You are a dental diagnostician helping patients recognize when they need treatment. Use friendly, non-alarming language while being informative.",
+        user: "List symptoms indicating need for {{serviceName}} in EXACTLY 5 bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Friendly, patient-facing tone\n- SEO-friendly content\n- Include: visible signs, pain indicators, functional problems, aesthetic concerns, early warning signs\n\nFormat as:\n• Symptom 1: [100 words explaining first symptom]\n• Symptom 2: [100 words explaining second symptom]\n• Symptom 3: [100 words explaining third symptom]\n• Symptom 4: [100 words explaining fourth symptom]\n• Symptom 5: [100 words explaining fifth symptom]"
       },
 
       // 5. Consequences when treatment is not performed (500 words in 5 bullet points)
       consequences: {
-        system: "You are a dental health educator. Write EXACTLY 5 consequences only. Be extremely concise.",
-        user: "List EXACTLY 5 consequences of delaying {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: problem progression, pain increase, functional loss, aesthetic damage, health impact. Keep descriptions extremely short and serious. DO NOT exceed character limits."
+        system: "You are a dental health educator explaining potential consequences of delayed treatment. Use caring, informative tone that motivates without frightening patients.",
+        user: "Explain consequences of delaying {{serviceName}} in EXACTLY 5 bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Friendly but serious tone\n- SEO-friendly content\n- Include: problem progression, increased complications, functional impact, aesthetic changes, overall health effects\n\nFormat as:\n• Consequence 1: [100 words explaining first consequence]\n• Consequence 2: [100 words explaining second consequence]\n• Consequence 3: [100 words explaining third consequence]\n• Consequence 4: [100 words explaining fourth consequence]\n• Consequence 5: [100 words explaining fifth consequence]"
       },
 
-      // 6. Treatment procedure in 5 steps (500 words)
+      // 6. Treatment procedure in 5 steps (500 words total)
       procedureSteps: {
-        system: "You are a dental educator. Write EXACTLY 5 steps only. Be extremely concise.",
-        user: "Outline {{serviceName}} in EXACTLY 5 steps. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 350 characters (about 50-60 words maximum)\n\nUse format: 1. Step Title: Description\nEmphasize comfort, safety, modern techniques. Keep descriptions extremely short and reassuring. DO NOT exceed character limits."
+        system: "You are a dental educator explaining procedures to patients in a reassuring, step-by-step manner. Focus on comfort, safety, and modern techniques.",
+        user: "Explain the {{serviceName}} procedure in EXACTLY 5 steps. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per step)\n- Friendly, reassuring tone for patients\n- SEO-friendly content\n- Include: preparation, actual procedure steps, comfort measures, modern techniques, safety protocols\n\nFormat as:\nStep 1: [100 words explaining first step]\nStep 2: [100 words explaining second step]\nStep 3: [100 words explaining third step]\nStep 4: [100 words explaining fourth step]\nStep 5: [100 words explaining fifth step]"
       },
 
       // 7. Post-treatment care (500 words in 5 bullet points)
       postTreatmentCare: {
-        system: "You are a dental hygienist. Write EXACTLY 5 care instructions only. Be extremely concise.",
-        user: "List EXACTLY 5 post-treatment care instructions for {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: immediate care, short-term care, diet restrictions, oral hygiene, long-term maintenance. Keep descriptions extremely short and actionable. DO NOT exceed character limits."
+        system: "You are a dental hygienist providing comprehensive aftercare instructions. Use clear, actionable language that patients can easily follow.",
+        user: "Provide post-treatment care instructions for {{serviceName}} in EXACTLY 5 bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Friendly, instructional tone\n- SEO-friendly content\n- Include: immediate care, diet guidelines, oral hygiene, activity restrictions, follow-up care\n\nFormat as:\n• Care Point 1: [100 words explaining first care instruction]\n• Care Point 2: [100 words explaining second care instruction]\n• Care Point 3: [100 words explaining third care instruction]\n• Care Point 4: [100 words explaining fourth care instruction]\n• Care Point 5: [100 words explaining fifth care instruction]"
       },
 
       // 8. Benefits of this procedure (500 words in 5 bullet points)
       procedureBenefits: {
-        system: "You are a dental marketing expert writing benefit-focused content. Write EXACTLY 5 benefits only. Be extremely concise.",
-        user: "List EXACTLY 5 key benefits of {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters (very short titles)\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nWrite exactly 5 benefits covering: health, aesthetics, function, comfort, and value. Keep descriptions extremely short and impactful. DO NOT exceed character limits."
+        system: "You are a dental marketing expert writing benefit-focused content in a friendly, patient-centered manner. Highlight positive outcomes and life improvements.",
+        user: "List benefits of {{serviceName}} in EXACTLY 5 bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Friendly, encouraging tone\n- SEO-friendly content\n- Include: health improvements, aesthetic benefits, functional advantages, comfort enhancements, long-term value\n\nFormat as:\n• Benefit 1: [100 words explaining first benefit]\n• Benefit 2: [100 words explaining second benefit]\n• Benefit 3: [100 words explaining third benefit]\n• Benefit 4: [100 words explaining fourth benefit]\n• Benefit 5: [100 words explaining fifth benefit]"
       },
 
       // 9. Side effects (500 words in 5 bullet points)
       sideEffects: {
-        system: "You are a dental professional providing honest, balanced information. Write EXACTLY 5 side effects only. Be extremely concise.",
-        user: "List EXACTLY 5 potential side effects of {{serviceName}}. CRITICAL LIMITS:\n- Title: Maximum 50 characters\n- Description: Maximum 180 characters (about 25-30 words maximum)\n\nCover: common effects, rare complications, normal responses, when to call doctor, and prevention. Keep descriptions extremely short and clear. DO NOT exceed character limits."
+        system: "You are a dental professional providing honest, balanced information about potential side effects. Use reassuring tone while being thorough and accurate.",
+        user: "Explain potential side effects of {{serviceName}} in EXACTLY 5 bullet points. REQUIREMENTS:\n- Total content: EXACTLY 500 words (100 words per bullet point)\n- Honest but reassuring tone\n- SEO-friendly content\n- Include: common temporary effects, rare complications, normal healing responses, when to contact doctor, prevention tips\n\nFormat as:\n• Side Effect 1: [100 words explaining first potential side effect]\n• Side Effect 2: [100 words explaining second potential side effect]\n• Side Effect 3: [100 words explaining third potential side effect]\n• Side Effect 4: [100 words explaining fourth potential side effect]\n• Side Effect 5: [100 words explaining fifth potential side effect]"
       },
 
       // 10. Myths and facts (500 words - 5 myths and facts)
       mythsAndFacts: {
-        system: "You are a dental expert debunking common misconceptions about dental treatments while providing accurate, evidence-based information.",
-        user: "Present 5 common myths and facts about {{serviceName}}. Write exactly 500 words total (50 words per myth, 50 words per fact). Use this format:\nMyth 1: [Common misconception]\nFact 1: [Accurate information]\nAddress common patient concerns and misconceptions with evidence-based facts."
+        system: "You are a dental expert debunking common misconceptions about dental treatments while providing accurate, evidence-based information. Use friendly, educational tone suitable for patient websites.",
+        user: "Present 5 common myths and facts about {{serviceName}}. REQUIREMENTS:\n- Total content: EXACTLY 500 words\n- 50 words per myth statement + 50 words per fact explanation\n- Friendly, educational tone for clinic websites\n- SEO-friendly content\n- Address common patient concerns and misconceptions with evidence-based facts\n\nFormat as:\nMyth 1: [50 words stating common misconception]\nFact 1: [50 words providing accurate information]\nMyth 2: [50 words stating common misconception]\nFact 2: [50 words providing accurate information]\n... continue for all 5 myths and facts"
       },
 
-      // 11. FAQs (25 FAQ with 100-word answers)
+      // 11. FAQs (25 FAQs with 100-word answers)
       comprehensiveFAQ: {
-        system: "You are a dental practice manager. Write EXACTLY 25 FAQs only. Be extremely concise.",
-        user: "Generate EXACTLY 25 FAQs about {{serviceName}}. CRITICAL LIMITS:\nQ: [Question - Maximum 120 characters - very brief]\nA: [Answer - Maximum 600 characters - about 80-90 words maximum]\n\nCover: procedure, cost, pain, recovery, candidacy, risks, alternatives, results, maintenance. Keep questions extremely short and answers very concise. DO NOT exceed character limits."
+        system: "You are a dental practice manager creating comprehensive FAQ content for patients. Write in friendly, informative tone suitable for clinic websites and brochures.",
+        user: "Generate EXACTLY 25 FAQs about {{serviceName}} with detailed answers. REQUIREMENTS:\n- EXACTLY 25 questions and answers\n- Each answer: EXACTLY 100 words\n- Total content: 2500 words\n- Friendly, patient-facing tone for clinic websites\n- SEO-friendly questions and answers\n- Cover: procedure details, cost considerations, pain management, recovery time, candidacy, risks, alternatives, results, maintenance, insurance\n\nFormat as:\nQ1: [SEO-friendly question]\nA1: [100 words comprehensive answer]\nQ2: [SEO-friendly question]\nA2: [100 words comprehensive answer]\n... continue for all 25 FAQs"
       },
 
       // Legacy prompts for backward compatibility
@@ -225,10 +218,8 @@ class LLMService {
     switch (providerKey) {
       case 'google-ai':
         return await this.callGoogleAI(prompt, options);
-      case 'deepseek':
-        return await this.callDeepSeek(prompt, options);
       default:
-        throw new Error(`Unsupported provider: ${providerKey}. Only 'google-ai' and 'deepseek' are supported.`);
+        throw new Error(`Unsupported provider: ${providerKey}. Only 'google-ai' is supported.`);
     }
   }
 
@@ -256,101 +247,69 @@ class LLMService {
       }
     };
 
-    try {
-      const response = await axios.post(
-        `${provider.apiUrl}/${provider.model}:generateContent?key=${provider.apiKey}`,
-        requestData,
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000
+    const maxRetries = 2;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Google AI attempt ${attempt}/${maxRetries} for content generation...`);
+
+        const response = await axios.post(
+          `${provider.apiUrl}/${provider.model}:generateContent?key=${provider.apiKey}`,
+          requestData,
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            timeout: 60000
+          }
+        );
+
+        if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          throw new Error('Invalid response format from Google AI');
         }
-      );
 
-      if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        throw new Error('Invalid response format from Google AI');
+        const content = response.data.candidates[0].content.parts[0].text;
+        const tokensUsed = this.estimateTokens(processedPrompt + content);
+
+        // Update rate limiting
+        this.updateRateLimit('google-ai');
+
+        console.log(`✅ Google AI succeeded on attempt ${attempt}`);
+        return {
+          content: content.trim(),
+          tokensUsed,
+          model: provider.model
+        };
+
+      } catch (error) {
+        lastError = error;
+
+        // Don't retry for rate limits or quota exceeded
+        if (error.response?.status === 429) {
+          throw new Error('Google AI rate limit exceeded');
+        }
+
+        // Don't retry for authentication errors
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          throw new Error('Google AI authentication error');
+        }
+
+        // For timeout or network errors, retry if we have attempts left
+        if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' ||
+             error.message.includes('timeout') || error.message.includes('network')) &&
+            attempt < maxRetries) {
+          console.log(`⏳ Google AI attempt ${attempt} failed (${error.message}), retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+          continue;
+        }
+
+        // For other errors or last attempt, throw immediately
+        throw new Error(`Google AI error: ${error.message}`);
       }
-
-      const content = response.data.candidates[0].content.parts[0].text;
-      const tokensUsed = this.estimateTokens(processedPrompt + content);
-
-      // Update rate limiting
-      this.updateRateLimit('google-ai');
-
-      return {
-        content: content.trim(),
-        tokensUsed,
-        model: provider.model
-      };
-
-    } catch (error) {
-      if (error.response?.status === 429) {
-        throw new Error('Google AI rate limit exceeded');
-      }
-      throw new Error(`Google AI error: ${error.message}`);
     }
   }
 
-  /**
-   * Call DeepSeek API
-   */
-  async callDeepSeek(prompt, options = {}) {
-    const { temperature = 0.7, maxTokens = 1000, variables = {} } = options;
-    const provider = this.providers['deepseek'];
-
-    // Replace variables in prompt
-    const processedPrompt = this.replaceVariables(prompt, variables);
-
-    const requestData = {
-      model: provider.model,
-      messages: [
-        {
-          role: 'user',
-          content: processedPrompt
-        }
-      ],
-      temperature: temperature,
-      max_tokens: maxTokens,
-      stream: false
-    };
-
-    try {
-      const response = await axios.post(
-        provider.apiUrl,
-        requestData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${provider.apiKey}`
-          },
-          timeout: 30000
-        }
-      );
-
-      if (!response.data?.choices?.[0]?.message?.content) {
-        throw new Error('Invalid response format from DeepSeek');
-      }
-
-      const content = response.data.choices[0].message.content;
-      const tokensUsed = response.data.usage?.total_tokens || this.estimateTokens(processedPrompt + content);
-
-      // Update rate limiting
-      this.updateRateLimit('deepseek');
-
-      return {
-        content: content.trim(),
-        tokensUsed,
-        model: provider.model
-      };
-
-    } catch (error) {
-      if (error.response?.status === 429) {
-        throw new Error('DeepSeek rate limit exceeded');
-      }
-      throw new Error(`DeepSeek error: ${error.message}`);
-    }
-  }
 
 
   /**
@@ -444,7 +403,8 @@ class LLMService {
       for (const [batchIndex, batch] of batches.entries()) {
         console.log(`Processing batch ${batchIndex + 1}/${batches.length} for ${serviceName}`);
 
-        const batchPromises = batch.map(async (section) => {
+        // Generate all sections in batch - fail immediately if any section fails
+        for (const section of batch) {
           try {
             const result = await this.generateDentalServiceContent(serviceName, section, {
               keywords,
@@ -454,26 +414,13 @@ class LLMService {
               ...options
             });
             console.log(`✓ Generated ${section} for ${serviceName}`);
-            return { section, result };
+            results[section] = result;
           } catch (error) {
             console.error(`✗ Failed to generate ${section} for ${serviceName}:`, error.message);
-            return { section, error: error.message };
+            // STRICT ERROR HANDLING: Throw immediately when any section fails
+            throw new Error(`Content generation failed for section "${section}": ${error.message}`);
           }
-        });
-
-        const batchResults = await Promise.allSettled(batchPromises);
-
-        // Process batch results
-        batchResults.forEach((promiseResult) => {
-          if (promiseResult.status === 'fulfilled') {
-            const { section, result, error } = promiseResult.value;
-            if (result) {
-              results[section] = result;
-            } else if (error) {
-              results[section] = { error };
-            }
-          }
-        });
+        }
 
         // Add delay between batches to respect rate limits
         if (batchIndex < batches.length - 1) {
@@ -590,8 +537,7 @@ class LLMService {
 
     // Conservative rate limits per minute
     const limits = {
-      'google-ai': 15, // Google AI Studio free tier
-      'deepseek': 20   // Conservative limit for DeepSeek
+      'google-ai': 15  // Google AI Studio free tier
     };
 
     return count >= (limits[provider] || 10);
@@ -718,10 +664,10 @@ class LLMService {
           console.log(`❌ Blog generation error: ${blogType.title} - ${error.message}`);
         }
 
-        // Add delay between blog generations
+        // Enhanced delay between blog generations to handle rate limits
         if (i < Math.min(blogCount, blogTypes.length) - 1) {
-          console.log('⏳ Waiting 3 seconds before next blog...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          console.log('⏳ Waiting 8 seconds before next blog...');
+          await new Promise(resolve => setTimeout(resolve, 8000));
         }
       }
 
@@ -779,27 +725,43 @@ class LLMService {
       for (const [index, sectionKey] of sections.entries()) {
         console.log(`Generating ${sectionKey} for ${serviceName} blog (${blogType})`);
 
-        try {
-          const result = await this.generateContent(blogPrompts[sectionKey], {
-            maxTokens: sectionKey === 'faq' ? 2000 : 800,
-            temperature: 0.7,
-            ...generateOptions
-          });
+        let retryCount = 0;
+        let maxRetries = 2;
+        let sectionGenerated = false;
 
-          if (result.content) {
-            results[sectionKey] = {
-              content: result.content,
-              tokensUsed: result.tokensUsed || 0
-            };
+        while (!sectionGenerated && retryCount < maxRetries) {
+          try {
+            const result = await this.generateContent(blogPrompts[sectionKey], {
+              maxTokens: sectionKey === 'faq' ? 2000 : 800,
+              temperature: 0.7,
+              ...generateOptions
+            });
+
+            if (result.content) {
+              results[sectionKey] = {
+                content: result.content,
+                tokensUsed: result.tokensUsed || 0
+              };
+              sectionGenerated = true;
+            }
+          } catch (error) {
+            retryCount++;
+            console.error(`Failed to generate ${sectionKey} (attempt ${retryCount}):`, error.message);
+
+            // If rate limited, wait longer before retry
+            if (error.message.includes('rate limit') && retryCount < maxRetries) {
+              console.log(`⏳ Rate limit hit, waiting 15 seconds before retry...`);
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            } else {
+              results[sectionKey] = { error: error.message };
+              break;
+            }
           }
-        } catch (error) {
-          console.error(`Failed to generate ${sectionKey}:`, error.message);
-          results[sectionKey] = { error: error.message };
         }
 
-        // Small delay between sections
+        // Enhanced delay between sections to prevent rate limits
         if (index < sections.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 4000));
         }
       }
 
@@ -1094,6 +1056,63 @@ class LLMService {
     ];
 
     return content;
+  }
+
+  // Parse FAQ content for blog generation
+  parseFAQContent(content, maxQuestions = 10) {
+    if (!content || typeof content !== 'string') {
+      return [];
+    }
+
+    const questions = [];
+
+    // Look for Q1: A1: or Q: A: patterns (numbered or unnumbered)
+    const qaPatterns = [
+      // First try numbered format: Q1: ... A1:
+      /Q(\d+):\s*([^\n]+(?:\n(?!A\d+:)[^\n]*)*)\s*A\1:\s*([^\n]+(?:\n(?!Q\d+:)[^\n]*)*)/g,
+      // Then try simple format: Q: ... A:
+      /Q:\s*([^\n]+(?:\n(?!A:)[^\n]*)*)\s*A:\s*([^\n]+(?:\n(?!Q:)[^\n]*)*)/g
+    ];
+
+    let foundQuestions = false;
+
+    for (const pattern of qaPatterns) {
+      pattern.lastIndex = 0; // Reset regex
+      let match;
+
+      while ((match = pattern.exec(content)) && questions.length < maxQuestions) {
+        foundQuestions = true;
+        let questionText, answerText;
+
+        if (pattern.source.includes('\\d+')) {
+          // Numbered format: match[1] = number, match[2] = question, match[3] = answer
+          questionText = match[2];
+          answerText = match[3];
+        } else {
+          // Simple format: match[1] = question, match[2] = answer
+          questionText = match[1];
+          answerText = match[2];
+        }
+
+        const question = questionText.trim().replace(/\n/g, ' ').substring(0, 200);
+        const answer = answerText.trim().replace(/\n/g, ' ').substring(0, 800);
+
+        if (question && answer && question.length > 10 && answer.length > 20) {
+          questions.push({
+            question: question,
+            answer: answer,
+            order: questions.length
+          });
+        }
+      }
+
+      // If we found questions with this pattern, stop trying other patterns
+      if (foundQuestions && questions.length > 0) {
+        break;
+      }
+    }
+
+    return questions.slice(0, maxQuestions);
   }
 }
 

@@ -178,7 +178,7 @@ const dentalServiceSchema = new mongoose.Schema({
     },
     generatedBy: {
       type: String,
-      enum: ['google-ai', 'deepseek', 'mock', 'manual', 'template']
+      enum: ['google-ai', 'mock', 'manual', 'template']
     },
     promptUsed: {
       type: String,

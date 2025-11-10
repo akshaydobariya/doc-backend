@@ -28,86 +28,155 @@ const blogSchema = new mongoose.Schema({
     trim: true
   },
 
-  // Content Structure - 11 Sections (Clove Dental Format)
+  // Content Structure - Enhanced 11 Sections (Updated for new format requirements)
   content: {
-    // Section 1: Introduction with hook
+    // Section 1: Introduction (100 words exactly)
     introduction: {
       title: { type: String, default: 'Introduction' },
-      content: { type: String, required: true },
+      content: { type: String, required: true, maxLength: 800 }, // ~100 words
+      wordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'introduction' }
     },
 
-    // Section 2: What is this treatment?
+    // Section 2: What does it entail (500 words in 5 bullet points)
     whatIsIt: {
-      title: { type: String, default: 'What is this treatment?' },
-      content: { type: String, required: true },
+      title: { type: String, default: 'What Does This Treatment Entail?' },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'what-is-it' }
     },
 
-    // Section 3: Why do you need this treatment?
+    // Section 3: Why does one need to undergo this treatment (500 words in 5 bullet points)
     whyNeedIt: {
-      title: { type: String, default: 'Why do you need this treatment?' },
-      content: { type: String, required: true },
+      title: { type: String, default: 'Why Do You Need This Treatment?' },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'why-need-it' }
     },
 
-    // Section 4: Signs and symptoms
+    // Section 4: Symptoms requiring treatment (500 words in 5 bullet points)
     signsSymptoms: {
       title: { type: String, default: 'Signs and Symptoms' },
-      content: { type: String, required: true },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'signs-symptoms' }
     },
 
-    // Section 5: Consequences of delay
+    // Section 5: Consequences when treatment is not performed (500 words in 5 bullet points)
     consequencesDelay: {
-      title: { type: String, default: 'What happens if treatment is delayed?' },
-      content: { type: String, required: true },
+      title: { type: String, default: 'What Happens If Treatment Is Delayed?' },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'consequences-delay' }
     },
 
-    // Section 6: Treatment process
+    // Section 6: Procedure steps (500 words in 5 steps)
     treatmentProcess: {
-      title: { type: String, default: 'Treatment Process' },
-      content: { type: String, required: true },
+      title: { type: String, default: 'Treatment Procedure: Step by Step' },
+      steps: [{
+        stepNumber: { type: Number, required: true },
+        title: { type: String, maxLength: 100 },
+        description: { type: String, maxLength: 800 }, // ~100 words per step
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'treatment-process' }
     },
 
-    // Section 7: Benefits
+    // Section 7: Benefits of the procedure (500 words in 5 bullet points)
     benefits: {
-      title: { type: String, default: 'Benefits of the Treatment' },
-      content: { type: String, required: true },
+      title: { type: String, default: 'Benefits of This Treatment' },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'benefits' }
     },
 
-    // Section 8: Recovery and aftercare
+    // Section 8: Post-treatment care (500 words in 5 bullet points)
     recoveryAftercare: {
-      title: { type: String, default: 'Recovery and Aftercare' },
-      content: { type: String, required: true },
+      title: { type: String, default: 'Post-Treatment Care' },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'recovery-aftercare' }
     },
 
-    // Section 9: Myths vs Facts
+    // Section 9: Side effects (500 words in 5 bullet points)
+    sideEffects: {
+      title: { type: String, default: 'Potential Side Effects' },
+      bulletPoints: [{
+        title: { type: String, maxLength: 100 },
+        content: { type: String, maxLength: 800 }, // ~100 words per bullet
+        wordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
+      anchor: { type: String, default: 'side-effects' }
+    },
+
+    // Section 10: Myths and facts (500 words - 5 myths and facts)
     mythsFacts: {
       title: { type: String, default: 'Myths vs Facts' },
-      content: { type: String, required: true },
+      items: [{
+        mythNumber: { type: Number, required: true },
+        myth: { type: String, maxLength: 400 }, // ~50 words
+        fact: { type: String, maxLength: 400 }, // ~50 words
+        mythWordCount: { type: Number, default: 0 },
+        factWordCount: { type: Number, default: 0 },
+        _id: false
+      }],
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'myths-facts' }
     },
 
-    // Section 10: Cost considerations
-    costConsiderations: {
-      title: { type: String, default: 'Cost Considerations' },
-      content: { type: String, required: true },
-      anchor: { type: String, default: 'cost-considerations' }
-    },
-
-    // Section 11: Comprehensive FAQ
+    // Section 11: Comprehensive FAQ (25 FAQs with 100-word answers)
     faq: {
       title: { type: String, default: 'Frequently Asked Questions' },
       questions: [{
-        question: { type: String, required: true, maxLength: 200 },
-        answer: { type: String, required: true, maxLength: 800 },
+        questionNumber: { type: Number, required: true },
+        question: { type: String, required: true, maxLength: 300 }, // SEO-friendly questions
+        answer: { type: String, required: true, maxLength: 800 }, // ~100 words per answer
+        category: {
+          type: String,
+          enum: ['procedure', 'cost', 'pain', 'recovery', 'candidacy', 'risks', 'alternatives', 'results', 'maintenance', 'general'],
+          default: 'general'
+        },
+        order: { type: Number, default: 0 },
+        wordCount: { type: Number, default: 0 },
+        seoFriendly: { type: Boolean, default: true },
         _id: false
       }],
+      totalQuestions: { type: Number, default: 0 },
+      totalWordCount: { type: Number, default: 0 },
       anchor: { type: String, default: 'faq' }
     }
   },
@@ -239,7 +308,7 @@ const blogSchema = new mongoose.Schema({
   },
   generationProvider: {
     type: String,
-    enum: ['google-ai', 'deepseek', 'manual'],
+    enum: ['google-ai', 'manual'],
     default: 'google-ai'
   },
   generationMetadata: {

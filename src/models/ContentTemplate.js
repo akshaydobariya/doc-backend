@@ -347,7 +347,7 @@ const contentTemplateSchema = new mongoose.Schema({
   llmSettings: {
     provider: {
       type: String,
-      enum: ['google-ai', 'deepseek', 'openai', 'manual'],
+      enum: ['google-ai', 'openai', 'manual'],
       default: 'google-ai'
     },
     model: {

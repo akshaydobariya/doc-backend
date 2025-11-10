@@ -215,7 +215,7 @@ router.post('/:servicePageId/comprehensive-content/generate',
   validateServicePageId,
   [
     body('forceRegenerate').optional().isBoolean().withMessage('forceRegenerate must be a boolean'),
-    body('provider').optional().isIn(['auto', 'google-ai', 'deepseek', 'mock']).withMessage('Invalid provider'),
+    body('provider').optional().isIn(['auto', 'google-ai', 'mock']).withMessage('Invalid provider'),
     body('customKeywords').optional().isArray().withMessage('customKeywords must be an array'),
     body('customCategory').optional().isString().withMessage('customCategory must be a string')
   ],

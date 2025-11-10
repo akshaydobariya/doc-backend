@@ -555,13 +555,10 @@ const generateContentFromServiceData = async (req, res) => {
 
     let llmResult;
 
-    if (fastMode) {
-      // Fast mode: Create basic content without LLM generation
-      console.log(`⚡ Fast mode: Generating basic content for: ${serviceName} (Website: ${website.name})`);
-      llmResult = createFastModeContent(serviceName, category, website, keywords);
-    } else {
-      // Standard mode: Generate comprehensive 11-section content using LLM with website context
-      console.log(`🎨 Generating comprehensive 11-section content for: ${serviceName} (Website: ${website.name})`);
+    // ALWAYS use comprehensive 11-section content generation with LLM
+    console.log(`🎨 Generating comprehensive 11-section content for: ${serviceName} (Website: ${website.name})`);
+
+    try {
       llmResult = await llmService.generateComprehensiveDentalContent({
         serviceName,
         category: category || 'general-dentistry',
@@ -575,6 +572,18 @@ const generateContentFromServiceData = async (req, res) => {
         websiteName: website.name,
         doctorName: website.doctorName || 'Dr. Smith',
         practiceLocation: website.location || 'Our Practice'
+      });
+
+      console.log('✅ LLM content generation successful!');
+    } catch (llmError) {
+      console.error('❌ LLM content generation failed:', llmError.message);
+
+      // STRICT ERROR HANDLING: Return error to frontend immediately
+      return res.status(500).json({
+        success: false,
+        error: 'Content generation failed',
+        message: llmError.message,
+        code: 'LLM_GENERATION_FAILED'
       });
     }
 
@@ -729,82 +738,95 @@ const generateContentFromServiceData = async (req, res) => {
         // Custom sections (empty by default)
         customSections: [],
 
-        // Comprehensive content sections for detailed dental service information
+        // Comprehensive content sections for detailed dental service information (ALL 11 SECTIONS)
         comprehensiveContent: {
           // 1. Introduction (100 words in simple patient terms)
           introduction: {
+            title: 'Introduction',
             content: llmResult.content.introduction?.content || `Professional ${serviceName} services with expert care and modern technology.`,
-            wordCount: llmResult.content.introduction?.wordCount || 0
+            wordCount: llmResult.content.introduction?.wordCount || 0,
+            anchor: 'introduction'
           },
 
           // 2. What does it entail - Detailed explanation (500 words in 5 bullet points)
           detailedExplanation: {
             title: 'What Does This Treatment Entail?',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.detailedExplanation?.content, 'What this treatment entails', 5),
-            totalWordCount: llmResult.content.detailedExplanation?.wordCount || 0
+            totalWordCount: llmResult.content.detailedExplanation?.wordCount || 0,
+            anchor: 'what-does-it-entail'
           },
 
           // 3. Why does one need to undergo this treatment (500 words in 5 bullet points)
           treatmentNeed: {
             title: 'Why Do You Need This Treatment?',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.treatmentNeed?.content, 'Treatment needs', 5),
-            totalWordCount: llmResult.content.treatmentNeed?.wordCount || 0
+            totalWordCount: llmResult.content.treatmentNeed?.wordCount || 0,
+            anchor: 'why-need-treatment'
           },
 
           // 4. Symptoms for which this treatment is required (500 words in 5 bullet points)
           symptoms: {
             title: 'Signs You May Need This Treatment',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.symptoms?.content, 'Symptoms', 5),
-            totalWordCount: llmResult.content.symptoms?.wordCount || 0
+            totalWordCount: llmResult.content.symptoms?.wordCount || 0,
+            anchor: 'signs-symptoms'
           },
 
           // 5. Consequences when this treatment is not performed (500 words in 5 bullet points)
           consequences: {
             title: 'What Happens If Treatment Is Delayed?',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.consequences?.content, 'Consequences', 5),
-            totalWordCount: llmResult.content.consequences?.wordCount || 0
+            totalWordCount: llmResult.content.consequences?.wordCount || 0,
+            anchor: 'consequences-delay'
           },
 
           // 6. What is the procedure for this treatment - 5 steps (500 words)
-          procedureDetails: {
+          procedureSteps: {
             title: 'Step-by-Step Procedure',
             steps: parseLLMContentToSteps(llmResult.content.procedureSteps?.content, serviceName + ' procedure', 5),
-            totalWordCount: llmResult.content.procedureSteps?.wordCount || 0
+            totalWordCount: llmResult.content.procedureSteps?.wordCount || 0,
+            anchor: 'procedure-steps'
           },
 
           // 7. Post-treatment care (500 words in 5 bullet points)
           postTreatmentCare: {
             title: 'Post-Treatment Care Instructions',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.postTreatmentCare?.content, 'Aftercare', 5),
-            totalWordCount: llmResult.content.postTreatmentCare?.wordCount || 0
+            totalWordCount: llmResult.content.postTreatmentCare?.wordCount || 0,
+            anchor: 'post-care'
           },
 
           // 8. Benefits of this procedure (500 words in 5 bullet points)
-          detailedBenefits: {
+          procedureBenefits: {
             title: 'Benefits of This Treatment',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.procedureBenefits?.content, 'Benefits', 5),
-            totalWordCount: llmResult.content.procedureBenefits?.wordCount || 0
+            totalWordCount: llmResult.content.procedureBenefits?.wordCount || 0,
+            anchor: 'benefits'
           },
 
           // 9. Side effects (500 words in 5 bullet points)
           sideEffects: {
             title: 'Potential Side Effects',
             bulletPoints: parseLLMContentToBulletPoints(llmResult.content.sideEffects?.content, 'Side effects', 5),
-            totalWordCount: llmResult.content.sideEffects?.wordCount || 0
+            totalWordCount: llmResult.content.sideEffects?.wordCount || 0,
+            anchor: 'side-effects'
           },
 
           // 10. Myths and facts (500 words - 5 myths and facts)
           mythsAndFacts: {
             title: 'Common Myths and Facts',
             items: parseLLMContentToMythsAndFacts(llmResult.content.mythsAndFacts?.content, serviceName, 5),
-            totalWordCount: llmResult.content.mythsAndFacts?.wordCount || 0
+            totalWordCount: llmResult.content.mythsAndFacts?.wordCount || 0,
+            anchor: 'myths-facts'
           },
 
           // 11. Comprehensive FAQs (25 FAQs with 100-word answers)
           comprehensiveFAQ: {
             title: 'Comprehensive FAQ',
             questions: parseLLMContentToFAQ(llmResult.content.comprehensiveFAQ?.content, serviceName, 25),
-            totalQuestions: llmResult.content.comprehensiveFAQ?.questions?.length || 0
+            totalQuestions: llmResult.content.comprehensiveFAQ?.questions?.length || 25,
+            totalWordCount: llmResult.content.comprehensiveFAQ?.wordCount || 0,
+            anchor: 'comprehensive-faq'
           }
         }
       },
@@ -839,39 +861,32 @@ const generateContentFromServiceData = async (req, res) => {
 
     // Generate blogs - ALWAYS ENABLED WITH MULTIPLE FALLBACKS
     let generatedBlogs = [];
+
+    // Add cooling-off period before blog generation to let rate limits reset
+    console.log('⏳ Applying 10-second cooling-off period before blog generation...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+
     console.log(`📝 STARTING BLOG GENERATION for: ${serviceName} (fastMode: ${fastMode})`);
 
     try {
       let blogResults;
 
-      if (fastMode) {
-        // Fast mode: Use instant fallback blogs
-        console.log('⚡ Using fast mode blog generation...');
-        blogResults = createFastModeBlogs(serviceName, category);
-      } else {
-        try {
-          // Standard mode: Try LLM generation first
-          console.log('🧠 Attempting comprehensive LLM blog generation...');
-          blogResults = await llmService.generateServiceBlogs({
-            serviceName,
-            category: category || 'general-dentistry',
-            keywords: keywords.length > 0 ? keywords : []
-          }, {
-            provider,
-            temperature,
-            websiteId: website._id,
-            websiteName: website.name,
-            doctorName: website.doctorName || 'Dr. Professional',
-            practiceLocation: website.location || 'Our Practice'
-          });
+      // ALWAYS use LLM generation - no fast mode fallback
+      console.log('🧠 Generating comprehensive LLM blogs...');
+      blogResults = await llmService.generateServiceBlogs({
+          serviceName,
+          category: category || 'general-dentistry',
+          keywords: keywords.length > 0 ? keywords : []
+        }, {
+          provider,
+          temperature,
+          websiteId: website._id,
+          websiteName: website.name,
+          doctorName: website.doctorName || 'Dr. Professional',
+          practiceLocation: website.location || 'Our Practice'
+        });
 
-          console.log('✅ LLM blog generation successful');
-        } catch (llmError) {
-          // Fallback to fast mode if LLM fails
-          console.warn('⚠️ LLM blog generation failed, falling back to fast mode:', llmError.message);
-          blogResults = createFastModeBlogs(serviceName, category);
-        }
-      }
+      console.log('✅ LLM blog generation successful');
 
       console.log(`📋 Blog generation result:`, {
         success: blogResults.success,
@@ -1095,17 +1110,33 @@ const generateContentFromServiceData = async (req, res) => {
       includesBlogs: generatedBlogs.length > 0
     });
 
+    // Calculate content statistics
+    const contentStats = {
+      totalSections: 11,
+      sectionsGenerated: Object.keys(llmResult.content || {}).length,
+      totalWordCount: Object.values(llmResult.content || {}).reduce((total, section) =>
+        total + (section?.wordCount || 0), 0),
+      sectionsWithContent: Object.values(llmResult.content || {}).filter(section =>
+        section?.content && section.content.length > 0).length
+    };
+
     res.json({
       success: true,
       data: {
         service: service,
         page: servicePage,
-        llmContent: llmResult.content,
+        // COMPREHENSIVE CONTENT - All 11 sections with actual LLM content
+        comprehensiveContent: servicePage.content.comprehensiveContent,
+        llmContent: llmResult.content, // Raw LLM output for debugging
         blogs: generatedBlogs, // Include generated blogs in response
-        tokensUsed: llmResult.totalTokensUsed
+        tokensUsed: llmResult.totalTokensUsed || 0,
+        provider: llmResult.provider || 'unknown',
+        contentStats: contentStats
       },
-      message: isUpdate ? 'Service content updated successfully' : 'Service content generated successfully',
-      blogsGenerated: generatedBlogs.length
+      message: isUpdate ? 'Service content updated successfully with all 11 sections' : 'Service content generated successfully with all 11 sections',
+      blogsGenerated: generatedBlogs.length,
+      sectionsGenerated: contentStats.sectionsGenerated,
+      totalWordCount: contentStats.totalWordCount
     });
 
   } catch (error) {
@@ -1896,7 +1927,7 @@ function generateDefaultFAQ(serviceName, count = 25) {
 // Parse LLM text content into structured bullet points
 function parseLLMContentToBulletPoints(content, fallbackTopic = 'treatment', count = 5) {
   if (!content || typeof content !== 'string') {
-    return generateDefaultBulletPoints(fallbackTopic, count);
+    throw new Error(`Invalid or missing content for ${fallbackTopic} section. Content generation failed.`);
   }
 
   const bulletPoints = [];
@@ -1946,12 +1977,9 @@ function parseLLMContentToBulletPoints(content, fallbackTopic = 'treatment', cou
     }
   }
 
-  // Fill remaining slots with defaults if needed
-  while (bulletPoints.length < count) {
-    bulletPoints.push({
-      title: `${fallbackTopic} Point ${bulletPoints.length + 1}`,
-      content: `Important information about ${fallbackTopic.toLowerCase()} that helps patients understand this aspect of treatment.`
-    });
+  // STRICT ERROR HANDLING: If we don't have enough content, throw an error
+  if (bulletPoints.length < Math.min(count, 3)) {
+    throw new Error(`Failed to parse sufficient bullet points from ${fallbackTopic} content. Expected at least ${Math.min(count, 3)} points, got ${bulletPoints.length}.`);
   }
 
   return bulletPoints.slice(0, count);
@@ -1966,23 +1994,44 @@ function parseLLMContentToSteps(content, fallbackTopic = 'Treatment', count = 5)
 // Parse LLM content into FAQ format
 function parseLLMContentToFAQ(content, serviceName, maxQuestions = 25) {
   if (!content || typeof content !== 'string') {
-    return generateDefaultFAQ(serviceName, maxQuestions);
+    throw new Error(`Invalid or missing FAQ content for ${serviceName}. Content generation failed.`);
   }
 
   const questions = [];
 
-  // Look for Q: and A: patterns
-  const qaPairs = content.split(/Q:|(?=Q:)/).filter(part => part.trim());
+  // Look for Q1: A1: or Q: A: patterns (numbered or unnumbered)
+  // Updated regex to handle both "Q1: ... A1:" and "Q: ... A:" formats
+  const qaPatterns = [
+    // First try numbered format: Q1: ... A1:
+    /Q(\d+):\s*([^\n]+(?:\n(?!A\d+:)[^\n]*)*)\s*A\1:\s*([^\n]+(?:\n(?!Q\d+:)[^\n]*)*)/g,
+    // Then try simple format: Q: ... A:
+    /Q:\s*([^\n]+(?:\n(?!A:)[^\n]*)*)\s*A:\s*([^\n]+(?:\n(?!Q:)[^\n]*)*)/g
+  ];
 
-  for (const pair of qaPairs) {
-    if (questions.length >= maxQuestions) break;
+  let foundQuestions = false;
 
-    const qMatch = pair.match(/^[:\s]*([^A:]+?)A:\s*(.+?)(?=Q:|$)/s);
-    if (qMatch) {
-      const question = qMatch[1].trim().replace(/\n/g, ' ').substring(0, 150);
-      const answer = qMatch[2].trim().replace(/\n/g, ' ').substring(0, 700);
+  for (const pattern of qaPatterns) {
+    pattern.lastIndex = 0; // Reset regex
+    let match;
 
-      if (question && answer) {
+    while ((match = pattern.exec(content)) && questions.length < maxQuestions) {
+      foundQuestions = true;
+      let questionText, answerText;
+
+      if (pattern.source.includes('\\d+')) {
+        // Numbered format: match[1] = number, match[2] = question, match[3] = answer
+        questionText = match[2];
+        answerText = match[3];
+      } else {
+        // Simple format: match[1] = question, match[2] = answer
+        questionText = match[1];
+        answerText = match[2];
+      }
+
+      const question = questionText.trim().replace(/\n/g, ' ').substring(0, 200);
+      const answer = answerText.trim().replace(/\n/g, ' ').substring(0, 800);
+
+      if (question && answer && question.length > 10 && answer.length > 20) {
         questions.push({
           question: question,
           answer: answer,
@@ -1990,12 +2039,16 @@ function parseLLMContentToFAQ(content, serviceName, maxQuestions = 25) {
         });
       }
     }
+
+    // If we found questions with this pattern, stop trying other patterns
+    if (foundQuestions && questions.length > 0) {
+      break;
+    }
   }
 
-  // If we couldn't parse enough questions, fill with defaults
-  while (questions.length < Math.min(maxQuestions, 10)) {
-    const defaultQuestions = generateDefaultFAQ(serviceName, maxQuestions);
-    questions.push(...defaultQuestions.slice(questions.length));
+  // STRICT ERROR HANDLING: If we don't have enough questions, throw an error
+  if (questions.length < Math.min(maxQuestions, 10)) {
+    throw new Error(`Failed to parse sufficient FAQ questions for ${serviceName}. Expected at least ${Math.min(maxQuestions, 10)} questions, got ${questions.length}.`);
   }
 
   return questions.slice(0, maxQuestions);
@@ -2004,7 +2057,7 @@ function parseLLMContentToFAQ(content, serviceName, maxQuestions = 25) {
 // Parse LLM content into myths and facts format
 function parseLLMContentToMythsAndFacts(content, serviceName, count = 5) {
   if (!content || typeof content !== 'string') {
-    return generateDefaultMythsAndFacts(serviceName, count);
+    throw new Error(`Invalid or missing myths and facts content for ${serviceName}. Content generation failed.`);
   }
 
   const items = [];
@@ -2038,12 +2091,9 @@ function parseLLMContentToMythsAndFacts(content, serviceName, count = 5) {
     }
   }
 
-  // Fill remaining slots with defaults if needed
-  while (items.length < count) {
-    items.push({
-      myth: `Common myth about ${serviceName} that patients often believe.`,
-      fact: `The actual truth about ${serviceName} based on current dental science and practice.`
-    });
+  // STRICT ERROR HANDLING: If we don't have enough myths/facts, throw an error
+  if (items.length < Math.min(count, 3)) {
+    throw new Error(`Failed to parse sufficient myths and facts for ${serviceName}. Expected at least ${Math.min(count, 3)} items, got ${items.length}.`);
   }
 
   return items.slice(0, count);
@@ -2052,13 +2102,7 @@ function parseLLMContentToMythsAndFacts(content, serviceName, count = 5) {
 // Parse LLM content into aftercare instructions format
 function parseAfterCareFromLLM(content) {
   if (!content || typeof content !== 'string') {
-    return [
-      {
-        title: 'Follow Standard Care',
-        description: 'Follow standard aftercare procedures.',
-        timeframe: 'First 24 hours'
-      }
-    ];
+    throw new Error('Invalid or missing aftercare content. Content generation failed.');
   }
 
   const instructions = [];
@@ -2496,6 +2540,5 @@ module.exports = {
   getServicePage,
   updateServicePage,
   getLLMStatus,
-  searchServices,
-  createFastModeBlogs
+  searchServices
 };
