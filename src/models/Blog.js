@@ -308,8 +308,8 @@ const blogSchema = new mongoose.Schema({
   },
   generationProvider: {
     type: String,
-    enum: ['google-ai', 'manual'],
-    default: 'google-ai'
+    enum: ['azure-openai', 'google-ai', 'manual'],
+    default: 'azure-openai'
   },
   generationMetadata: {
     tokensUsed: Number,

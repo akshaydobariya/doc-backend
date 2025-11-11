@@ -11,6 +11,9 @@ router.post('/google/callback', authController.googleCallback);
 // Get current user
 router.get('/current-user', authController.getCurrentUser);
 
+// Get session status
+router.get('/session-status', authController.getSessionStatus);
+
 // Logout
 router.post('/logout', authController.logout);
 

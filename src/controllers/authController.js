@@ -232,6 +232,49 @@ exports.getCurrentUser = async (req, res) => {
   }
 };
 
+exports.getSessionStatus = async (req, res) => {
+  try {
+    if (!req.session.user) {
+      return res.status(401).json({
+        message: 'Not authenticated',
+        sessionExpired: true
+      });
+    }
+
+    // Check if user still exists in database
+    const user = await User.findById(req.session.user.id);
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+        sessionExpired: true
+      });
+    }
+
+    // Calculate session age and remaining time
+    const sessionAge = Date.now() - req.session.cookie.originalMaxAge + req.session.cookie.maxAge;
+    const remainingTime = req.session.cookie.maxAge;
+    const totalSessionTime = req.session.cookie.originalMaxAge || (7 * 24 * 60 * 60 * 1000); // 7 days default
+
+    res.json({
+      authenticated: true,
+      sessionExpired: false,
+      user: req.session.user,
+      sessionInfo: {
+        sessionAge: Math.floor(sessionAge / 1000 / 60), // minutes
+        remainingTime: Math.floor(remainingTime / 1000 / 60), // minutes
+        totalSessionTime: Math.floor(totalSessionTime / 1000 / 60), // minutes
+        expiresAt: new Date(Date.now() + remainingTime).toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Get session status error:', error);
+    res.status(500).json({
+      message: 'Server error',
+      sessionExpired: true
+    });
+  }
+};
+
 exports.logout = (req, res) => {
   req.session.destroy(err => {
     if (err) {

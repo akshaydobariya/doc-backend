@@ -920,31 +920,60 @@ const generateContentFromServiceData = async (req, res) => {
               counter++;
             }
 
+            // Extract introduction from content structure (Azure OpenAI format)
+            const blogIntroduction = blogData.introduction ||
+                                   blogData.content?.introduction ||
+                                   (blogData.content?.sections?.[0]?.content) ||
+                                   `Learn everything about ${blogData.title}`;
+
+            // Transform Azure OpenAI blog content to match Blog schema
+            const transformedContent = {
+              introduction: {
+                title: 'Introduction',
+                content: blogIntroduction.substring(0, 800), // Match schema limit
+                wordCount: blogIntroduction.split(' ').length,
+                anchor: 'introduction'
+              }
+            };
+
+            // Add sections if they exist
+            if (blogData.content?.sections) {
+              blogData.content.sections.forEach((section, index) => {
+                const sectionKey = section.anchor || `section-${index + 1}`;
+                transformedContent[sectionKey] = {
+                  title: section.heading || section.title || `Section ${index + 1}`,
+                  content: section.content?.substring(0, 800) || '',
+                  wordCount: section.content ? section.content.split(' ').length : 0,
+                  anchor: section.anchor || sectionKey
+                };
+              });
+            }
+
             const blog = new Blog({
               title: blogData.title,
               slug: blogSlug,
-              introduction: blogData.introduction,
-              content: blogData.content,
+              introduction: blogIntroduction.substring(0, 500), // Top-level introduction for schema compatibility
+              content: transformedContent,
               keyTakeaways: blogData.keyTakeaways || [],
-              serviceId: service._id, // Use serviceId instead of servicePageId
-              servicePageId: servicePage._id, // Keep servicePageId as optional reference
+              serviceId: service._id,
+              servicePageId: servicePage._id,
               websiteId: website._id,
               author: website.doctorName || 'Dr. Professional',
               authorBio: `Experienced dental professional at ${website.name}`,
               category: category || 'general-dentistry',
               tags: blogData.tags || [serviceName.toLowerCase(), category],
               metaTitle: blogData.metaTitle || blogData.title,
-              metaDescription: blogData.metaDescription || blogData.introduction?.substring(0, 150),
+              metaDescription: blogData.metaDescription || blogIntroduction.substring(0, 150),
               seoKeywords: keywords.length > 0 ? keywords : [serviceName.toLowerCase()],
               isPublished: true,
               publishedAt: new Date(),
               featured: false,
               llmGenerated: true,
-              generationProvider: blogResults.provider || 'google-ai',
+              generationProvider: 'azure-openai',
               generationMetadata: {
                 tokensUsed: blogData.tokensUsed || 0,
                 temperature: temperature,
-                model: blogResults.model || 'gemini-pro',
+                model: 'gpt-4o',
                 generatedAt: new Date(),
                 prompt: `Blog generation for ${serviceName} - ${blogData.type}`
               }
@@ -1933,13 +1962,16 @@ function parseLLMContentToBulletPoints(content, fallbackTopic = 'treatment', cou
   const bulletPoints = [];
 
   // Try to extract bullet points from LLM content
-  // Look for patterns like "* **Title:** Description" or "1. **Title:** Description"
-  const bulletRegex = /(?:^\s*[\*\-\+\d\.]\s*)?[\*\*]*([^:*\n]+?)[\*\*]*:\s*([^\n]+)/gm;
-  let match;
+  // Updated regex to handle Azure OpenAI format: • **Title**: Content
+  // Also handles legacy formats: * **Title:** Description or "1. **Title:** Description"
+  const azureRegex = /•\s*\*\*([^*]+)\*\*:\s*([^•]+?)(?=•|\s*$)/gs;
+  const legacyRegex = /(?:^\s*[\*\-\+\d\.]\s*)?[\*\*]*([^:*\n]+?)[\*\*]*:\s*([^\n]+)/gm;
 
-  while ((match = bulletRegex.exec(content)) && bulletPoints.length < count) {
-    const title = match[1].trim().replace(/^\d+\.\s*/, '').replace(/^\*+\s*/, '');
-    const contentText = match[2].trim();
+  // First try Azure OpenAI format
+  let match;
+  while ((match = azureRegex.exec(content)) && bulletPoints.length < count) {
+    const title = match[1].trim();
+    const contentText = match[2].trim().replace(/\n\s*/g, ' '); // Clean up line breaks
 
     if (title && contentText) {
       bulletPoints.push({
@@ -1949,20 +1981,49 @@ function parseLLMContentToBulletPoints(content, fallbackTopic = 'treatment', cou
     }
   }
 
+  // If Azure format didn't work, try legacy format
+  if (bulletPoints.length === 0) {
+    while ((match = legacyRegex.exec(content)) && bulletPoints.length < count) {
+      const title = match[1].trim().replace(/^\d+\.\s*/, '').replace(/^\*+\s*/, '');
+      const contentText = match[2].trim();
+
+      if (title && contentText) {
+        bulletPoints.push({
+          title: title.substring(0, 60), // Limit title to 60 chars
+          content: contentText.substring(0, 200) // Limit content to 200 chars
+        });
+      }
+    }
+  }
+
   // If we couldn't parse enough bullet points, try alternative patterns
   if (bulletPoints.length < 3) {
     const lines = content.split('\n').filter(line => line.trim());
     for (const line of lines) {
       if (bulletPoints.length >= count) break;
 
-      // Look for lines that start with numbers, bullets, or asterisks
-      if (/^\s*[\*\-\+\d\.]\s/.test(line)) {
-        const cleanLine = line.replace(/^\s*[\*\-\+\d\.]\s*/, '').trim();
+      // Look for Azure OpenAI bullet format or traditional formats
+      if (/^\s*[•\*\-\+\d\.]\s/.test(line)) {
+        // Handle Azure OpenAI format: • **Title**: Content
+        if (line.includes('**') && line.includes(':')) {
+          const titleMatch = line.match(/•\s*\*\*([^*]+)\*\*:\s*(.*)/);
+          if (titleMatch) {
+            const title = titleMatch[1].trim().substring(0, 60);
+            const contentText = titleMatch[2].trim().substring(0, 200);
+            if (title && contentText) {
+              bulletPoints.push({ title, content: contentText });
+              continue;
+            }
+          }
+        }
+
+        // Handle traditional formats
+        const cleanLine = line.replace(/^\s*[•\*\-\+\d\.]\s*/, '').trim();
         if (cleanLine.length > 10) {
           // Split on first colon or use first part as title
           const colonIndex = cleanLine.indexOf(':');
           if (colonIndex > 0) {
-            const title = cleanLine.substring(0, colonIndex).trim().substring(0, 60);
+            const title = cleanLine.substring(0, colonIndex).trim().replace(/\*\*/g, '').substring(0, 60);
             const content = cleanLine.substring(colonIndex + 1).trim().substring(0, 200);
             bulletPoints.push({ title, content });
           } else {

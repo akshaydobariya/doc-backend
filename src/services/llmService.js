@@ -2,12 +2,29 @@ const axios = require('axios');
 
 /**
  * LLM Service for content generation
- * Supports Google AI Studio (Gemini) for dental content generation
- * Strict error handling - fails fast without fallbacks
+ * Supports OpenAI GPT-4o and Google AI Studio (Gemini) for dental content generation
+ * Provider order: OpenAI (preferred) -> Google AI (fallback)
+ * Strict error handling with automatic fallback to secondary provider
  */
 class LLMService {
   constructor() {
     this.providers = {
+      'azure-openai': {
+        name: 'Azure OpenAI GPT-4o',
+        apiUrl: process.env.AZURE_OPENAI_API_ENDPOINT,
+        deployment: process.env.AZURE_OPENAI_API_DEPLOYMENT,
+        model: 'gpt-4o',
+        apiKey: process.env.AZURE_OPENAI_API_KEY,
+        apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-12-01-preview',
+        enabled: !!(process.env.AZURE_OPENAI_API_ENDPOINT && process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_API_DEPLOYMENT)
+      },
+      'openai': {
+        name: 'OpenAI GPT-4o',
+        apiUrl: 'https://api.openai.com/v1/chat/completions',
+        model: 'gpt-4o',
+        apiKey: process.env.OPENAI_API_KEY,
+        enabled: !!process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('sk-')
+      },
       'google-ai': {
         name: 'Google AI Studio',
         apiUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
@@ -17,8 +34,14 @@ class LLMService {
       }
     };
 
-    // Default provider order - Google AI only
-    this.providerOrder = ['google-ai'];
+    // Provider order - prefer Azure OpenAI, then regular OpenAI, then Google AI
+    if (process.env.AZURE_OPENAI_API_ENDPOINT && process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_API_DEPLOYMENT) {
+      this.providerOrder = ['azure-openai', 'google-ai'];
+    } else if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('sk-')) {
+      this.providerOrder = ['openai', 'google-ai'];
+    } else {
+      this.providerOrder = ['google-ai'];
+    }
 
     // Rate limiting and caching
     this.requestCounts = new Map();
@@ -131,7 +154,8 @@ class LLMService {
       maxTokens = 1000,
       format = 'text',
       variables = {},
-      cacheKey = null
+      cacheKey = null,
+      timeout = 60000
     } = options;
 
     // Check cache first
@@ -165,7 +189,8 @@ class LLMService {
           temperature,
           maxTokens,
           format,
-          variables
+          variables,
+          timeout
         });
 
         // Cache successful result
@@ -216,10 +241,14 @@ class LLMService {
     }
 
     switch (providerKey) {
+      case 'azure-openai':
+        return await this.callAzureOpenAI(prompt, options);
+      case 'openai':
+        return await this.callOpenAI(prompt, options);
       case 'google-ai':
         return await this.callGoogleAI(prompt, options);
       default:
-        throw new Error(`Unsupported provider: ${providerKey}. Only 'google-ai' is supported.`);
+        throw new Error(`Unsupported provider: ${providerKey}. Supported: azure-openai, openai, google-ai`);
     }
   }
 
@@ -306,6 +335,196 @@ class LLMService {
 
         // For other errors or last attempt, throw immediately
         throw new Error(`Google AI error: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Call OpenAI GPT-4o
+   */
+  async callOpenAI(prompt, options = {}) {
+    const { temperature = 0.7, maxTokens = 1000, variables = {} } = options;
+    const provider = this.providers['openai'];
+
+    // Replace variables in prompt
+    const processedPrompt = this.replaceVariables(prompt, variables);
+
+    const requestData = {
+      model: provider.model,
+      messages: [
+        {
+          role: "system",
+          content: "You are a professional dental copywriter creating high-quality, SEO-optimized content for dental practices. Follow all instructions exactly, including word counts and formatting requirements."
+        },
+        {
+          role: "user",
+          content: processedPrompt
+        }
+      ],
+      temperature: temperature,
+      max_tokens: maxTokens,
+      top_p: 0.95,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.1
+    };
+
+    const maxRetries = 2;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`OpenAI GPT-4o attempt ${attempt}/${maxRetries} for content generation...`);
+
+        const response = await axios.post(provider.apiUrl, requestData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${provider.apiKey}`
+          },
+          timeout: 60000
+        });
+
+        if (!response.data?.choices?.[0]?.message?.content) {
+          throw new Error('Invalid response format from OpenAI');
+        }
+
+        const content = response.data.choices[0].message.content;
+        const tokensUsed = response.data.usage?.total_tokens || this.estimateTokens(processedPrompt + content);
+
+        // Update rate limiting
+        this.updateRateLimit('openai');
+
+        console.log(`✅ OpenAI GPT-4o succeeded on attempt ${attempt}, tokens used: ${tokensUsed}`);
+        return {
+          content: content.trim(),
+          tokensUsed,
+          model: provider.model
+        };
+
+      } catch (error) {
+        lastError = error;
+
+        // Don't retry for rate limits
+        if (error.response?.status === 429) {
+          throw new Error('OpenAI rate limit exceeded');
+        }
+
+        // Don't retry for authentication errors
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          throw new Error('OpenAI authentication error - check API key');
+        }
+
+        // Don't retry for insufficient quota
+        if (error.response?.status === 402) {
+          throw new Error('OpenAI quota exceeded - check billing');
+        }
+
+        // For timeout or network errors, retry if we have attempts left
+        if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' ||
+             error.message.includes('timeout') || error.message.includes('network')) &&
+            attempt < maxRetries) {
+          console.log(`⏳ OpenAI attempt ${attempt} failed (${error.message}), retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+          continue;
+        }
+
+        // For other errors or last attempt, throw immediately
+        throw new Error(`OpenAI error: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Call Azure OpenAI GPT-4o
+   */
+  async callAzureOpenAI(prompt, options = {}) {
+    const { temperature = 0.7, maxTokens = 1000, variables = {}, timeout = 60000 } = options;
+    const provider = this.providers['azure-openai'];
+
+    // Replace variables in prompt
+    const processedPrompt = this.replaceVariables(prompt, variables);
+
+    // Construct Azure OpenAI API URL
+    const apiUrl = `${provider.apiUrl}openai/deployments/${provider.deployment}/chat/completions?api-version=${provider.apiVersion}`;
+
+    const requestData = {
+      messages: [
+        {
+          role: "system",
+          content: "You are a professional dental copywriter creating high-quality, SEO-optimized content for dental practices. Follow all instructions exactly, including word counts and formatting requirements."
+        },
+        {
+          role: "user",
+          content: processedPrompt
+        }
+      ],
+      temperature: temperature,
+      max_tokens: maxTokens,
+      top_p: 0.95,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.1
+    };
+
+    const maxRetries = 2;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Azure OpenAI GPT-4o attempt ${attempt}/${maxRetries} for content generation...`);
+
+        const response = await axios.post(apiUrl, requestData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': provider.apiKey
+          },
+          timeout
+        });
+
+        if (!response.data?.choices?.[0]?.message?.content) {
+          throw new Error('Invalid response format from Azure OpenAI');
+        }
+
+        const content = response.data.choices[0].message.content;
+        const tokensUsed = response.data.usage?.total_tokens || this.estimateTokens(processedPrompt + content);
+
+        // Update rate limiting
+        this.updateRateLimit('azure-openai');
+
+        console.log(`✅ Azure OpenAI GPT-4o succeeded on attempt ${attempt}, tokens used: ${tokensUsed}`);
+        return {
+          content: content.trim(),
+          tokensUsed,
+          model: provider.model
+        };
+
+      } catch (error) {
+        lastError = error;
+
+        // Don't retry for rate limits
+        if (error.response?.status === 429) {
+          throw new Error('Azure OpenAI rate limit exceeded');
+        }
+
+        // Don't retry for authentication errors
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          throw new Error('Azure OpenAI authentication error - check API key');
+        }
+
+        // Don't retry for insufficient quota
+        if (error.response?.status === 402) {
+          throw new Error('Azure OpenAI quota exceeded - check billing');
+        }
+
+        // For timeout or network errors, retry if we have attempts left
+        if ((error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' ||
+             error.message.includes('timeout') || error.message.includes('network')) &&
+            attempt < maxRetries) {
+          console.log(`⏳ Azure OpenAI attempt ${attempt} failed (${error.message}), retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+          continue;
+        }
+
+        // For other errors or last attempt, throw immediately
+        throw new Error(`Azure OpenAI error: ${error.message}`);
       }
     }
   }
@@ -410,6 +629,7 @@ class LLMService {
               keywords,
               category,
               maxTokens: section === 'comprehensiveFAQ' ? 3000 : 800, // More tokens for comprehensive FAQ
+              timeout: section === 'comprehensiveFAQ' ? 120000 : 60000, // 2 minutes for FAQ, 1 minute for others
               temperature: 0.7,
               ...options
             });
@@ -537,7 +757,9 @@ class LLMService {
 
     // Conservative rate limits per minute
     const limits = {
-      'google-ai': 15  // Google AI Studio free tier
+      'azure-openai': 100,  // Azure OpenAI (usually higher limits)
+      'openai': 50,         // OpenAI GPT-4o (adjust based on your tier)
+      'google-ai': 15       // Google AI Studio free tier
     };
 
     return count >= (limits[provider] || 10);
@@ -600,10 +822,13 @@ class LLMService {
    * @returns {Promise<Object>} Array of generated blogs
    */
   async generateServiceBlogs(serviceData, options = {}) {
+    // Get blog count from environment variable, with fallback to options or default
+    const envBlogCount = parseInt(process.env.BLOG_COUNT) || 6;
+
     const {
       websiteName = 'Our Practice',
       doctorName = 'Dr. Professional',
-      blogCount = 6,
+      blogCount = envBlogCount,
       autoPublish = false,
       ...generateOptions
     } = options;
@@ -614,10 +839,21 @@ class LLMService {
       { type: 'procedure', title: `${serviceData.serviceName} Procedure: What to Expect` },
       { type: 'recovery', title: `Recovery and Aftercare for ${serviceData.serviceName}` },
       { type: 'cost', title: `${serviceData.serviceName} Cost: Investment in Your Health` },
-      { type: 'myths', title: `${serviceData.serviceName}: Myths vs Facts` }
+      { type: 'myths', title: `${serviceData.serviceName}: Myths vs Facts` },
+      { type: 'preparation', title: `How to Prepare for ${serviceData.serviceName}` },
+      { type: 'alternatives', title: `${serviceData.serviceName}: Treatment Options and Alternatives` },
+      { type: 'technology', title: `Modern Technology in ${serviceData.serviceName}` },
+      { type: 'maintenance', title: `Long-term Care After ${serviceData.serviceName}` },
+      { type: 'prevention', title: `Preventing the Need for ${serviceData.serviceName}` },
+      { type: 'comparison', title: `${serviceData.serviceName} vs Other Treatment Options` },
+      { type: 'success-stories', title: `Real Patient Success Stories: ${serviceData.serviceName}` },
+      { type: 'timing', title: `When is the Right Time for ${serviceData.serviceName}?` },
+      { type: 'emergency', title: `Emergency ${serviceData.serviceName}: What You Need to Know` }
     ];
 
     const results = [];
+
+    console.log(`📊 Blog generation configured: ${blogCount} blogs (from BLOG_COUNT env: ${process.env.BLOG_COUNT || 'not set, using default'})`);
 
     try {
       // Generate blogs sequentially to respect rate limits
